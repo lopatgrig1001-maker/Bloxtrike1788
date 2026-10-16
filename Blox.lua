@@ -1,6 +1,4 @@
--- SILENT AIM | hook ViewportPointToRay
--- Работает без краша на BloxStrike
-
+-- SILENT AIM | hook FindPartOnRayWithIgnoreList
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -30,7 +28,6 @@ RunService.RenderStepped:Connect(function()
     circle.Radius = calcRadius()
 end)
 
--- Поиск ближайшего к центру
 local function getTarget()
     local vp = Cam.ViewportSize
     local center = Vector2.new(vp.X/2, vp.Y/2)
@@ -53,7 +50,6 @@ local function getTarget()
     return best
 end
 
--- Хук на ViewportPointToRay
 local mt = getrawmetatable(game)
 if mt then
     local oldNamecall = mt.__namecall
@@ -62,15 +58,17 @@ if mt then
     mt.__namecall = newcclosure(function(self, ...)
         local method = getnamecallmethod()
         
-        -- Ловим ViewportPointToRay когда его вызывают на камере
-        if CONFIG.Enabled and method == "ViewportPointToRay" then
+        -- FindPartOnRayWithIgnoreList возвращает (Part, Position, Normal, Material)
+        -- Мы подменяем возврат — говорим игре "попадание в голову"
+        if CONFIG.Enabled and method == "FindPartOnRayWithIgnoreList" then
             local args = {...}
             local target = getTarget()
             if target then
-                -- Меняем аргументы: вместо позиции мыши — позиция головы
-                local sp = Cam:WorldToViewportPoint(target.Position)
-                if sp then
-                    args[1] = Vector2.new(sp.X, sp.Y)
+                -- Меняем origin/direction так чтобы луч летел в голову
+                if typeof(args[1]) == "Ray" then
+                    local ray = args[1]
+                    local newDir = (target.Position - ray.Origin)
+                    args[1] = Ray.new(ray.Origin, newDir)
                 end
             end
             return oldNamecall(self, table.unpack(args))
@@ -80,7 +78,7 @@ if mt then
     end)
     
     setreadonly(mt, true)
-    print("[R] SILENT hooked on ViewportPointToRay")
+    print("[R] SILENT hooked on FindPartOnRayWithIgnoreList")
 end
 
-print("[R] SILENT loaded")
+print("[R] SILENT loaded v2")
