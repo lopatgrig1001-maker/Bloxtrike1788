@@ -1,5 +1,6 @@
--- Universal Roblox Script | Aimbot + Silent Aim + Wallhack + Speed/Jump/Fly
+-- Universal Roblox Script | Aimbot + Silent Aim + Wallhack + Speed + High Jump + Fly
 -- Executor: Delta / Xeno / Wave / Codex
+-- Resolution: 2772x1280
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -12,15 +13,15 @@ local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 --========== CONFIG ==========
 local CONFIG = {
     Speed = true, SpeedVal = 50,
-    Jump = true, JumpVal = 100,
-    Fly = false, FlySpeed = 60,
+    Jump = true, JumpVal = 150,
+    Fly = false, FlySpeed = 80,
 
     ESP = true,
     ESPBox = true,
     ESPName = true,
     ESPHealth = true,
     ESPDist = true,
-    ESPMaxDist = 1000,
+    ESPMaxDist = 1500,
 
     Aim = true,
     AimFOV = 150,
@@ -41,6 +42,18 @@ local CONFIG = {
 local espCache = {}
 local flyVel, flyGyro
 
+--========== FOV HELPERS (2772x1280) ==========
+local function getScreenCenter()
+    local vp = Camera.ViewportSize
+    return Vector2.new(vp.X / 2, vp.Y / 2), vp
+end
+
+local function fovToPixels(fovDeg)
+    local vp = Camera.ViewportSize
+    local diag = math.sqrt(vp.X^2 + vp.Y^2)
+    return (fovDeg / 90) * (diag / 2)
+end
+
 --========== GUI ==========
 local sg = Instance.new("ScreenGui")
 sg.Name = "R_Universal"
@@ -49,9 +62,10 @@ sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 sg.Parent = PlayerGui
 
 local openBtn = Instance.new("TextButton")
-openBtn.Size = UDim2.new(0, 50, 0, 50)
-openBtn.Position = UDim2.new(0, 10, 0, 100)
+openBtn.Size = UDim2.new(0, 80, 0, 80)
+openBtn.Position = UDim2.new(0, 30, 0, 150)
 openBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+openBtn.BackgroundTransparency = 0.2
 openBtn.Text = "R"
 openBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 openBtn.TextScaled = true
@@ -60,87 +74,87 @@ openBtn.Parent = sg
 Instance.new("UICorner", openBtn).CornerRadius = UDim.new(1, 0)
 
 local panel = Instance.new("Frame")
-panel.Size = UDim2.new(0, 260, 0, 480)
-panel.Position = UDim2.new(0, 70, 0, 80)
+panel.Size = UDim2.new(0, 420, 0, 720)
+panel.Position = UDim2.new(0, 130, 0, 120)
 panel.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
 panel.BorderSizePixel = 0
 panel.Visible = false
 panel.Parent = sg
-Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 10)
+Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 14)
 
 local header = Instance.new("Frame")
-header.Size = UDim2.new(1, 0, 0, 36)
+header.Size = UDim2.new(1, 0, 0, 50)
 header.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
 header.BorderSizePixel = 0
 header.Parent = panel
-Instance.new("UICorner", header).CornerRadius = UDim.new(0, 10)
+Instance.new("UICorner", header).CornerRadius = UDim.new(0, 14)
 
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -20, 1, 0)
-title.Position = UDim2.new(0, 10, 0, 0)
+title.Position = UDim2.new(0, 15, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "R Universal | [R]"
+title.Text = "R Universal | 2772x1280"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.Font = Enum.Font.GothamBold
-title.TextSize = 15
+title.TextSize = 20
 title.Parent = header
 
 local scroll = Instance.new("ScrollingFrame")
-scroll.Size = UDim2.new(1, -10, 1, -46)
-scroll.Position = UDim2.new(0, 5, 0, 42)
+scroll.Size = UDim2.new(1, -14, 1, -62)
+scroll.Position = UDim2.new(0, 7, 0, 56)
 scroll.BackgroundTransparency = 1
 scroll.BorderSizePixel = 0
-scroll.ScrollBarThickness = 4
-scroll.CanvasSize = UDim2.new(0, 0, 0, 1200)
+scroll.ScrollBarThickness = 6
+scroll.CanvasSize = UDim2.new(0, 0, 0, 1500)
 scroll.Parent = panel
 
 local layout = Instance.new("UIListLayout")
-layout.Padding = UDim.new(0, 6)
+layout.Padding = UDim.new(0, 8)
 layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Parent = scroll
 
 local function makeSection(text)
     local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -10, 0, 26)
+    lbl.Size = UDim2.new(1, -12, 0, 34)
     lbl.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
     lbl.Text = "  " .. text
     lbl.TextColor3 = Color3.fromRGB(180, 180, 255)
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Font = Enum.Font.GothamBold
-    lbl.TextSize = 13
+    lbl.TextSize = 16
     lbl.BorderSizePixel = 0
     lbl.Parent = scroll
-    Instance.new("UICorner", lbl).CornerRadius = UDim.new(0, 5)
+    Instance.new("UICorner", lbl).CornerRadius = UDim.new(0, 6)
 end
 
 local function makeToggle(text, default, cb)
     local f = Instance.new("Frame")
-    f.Size = UDim2.new(1, -10, 0, 32)
+    f.Size = UDim2.new(1, -12, 0, 42)
     f.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
     f.BorderSizePixel = 0
     f.Parent = scroll
-    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 5)
+    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 6)
 
     local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -60, 1, 0)
-    lbl.Position = UDim2.new(0, 10, 0, 0)
+    lbl.Size = UDim2.new(1, -80, 1, 0)
+    lbl.Position = UDim2.new(0, 15, 0, 0)
     lbl.BackgroundTransparency = 1
     lbl.Text = text
     lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Font = Enum.Font.Gotham
-    lbl.TextSize = 13
+    lbl.TextSize = 16
     lbl.Parent = f
 
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 44, 0, 22)
-    btn.Position = UDim2.new(1, -54, 0.5, -11)
+    btn.Size = UDim2.new(0, 60, 0, 28)
+    btn.Position = UDim2.new(1, -75, 0.5, -14)
     btn.BackgroundColor3 = default and Color3.fromRGB(80, 200, 120) or Color3.fromRGB(60, 60, 70)
     btn.Text = default and "ON" or "OFF"
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 12
+    btn.TextSize = 14
     btn.BorderSizePixel = 0
     btn.Parent = f
     Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
@@ -156,26 +170,26 @@ end
 
 local function makeSlider(text, min, max, default, cb)
     local f = Instance.new("Frame")
-    f.Size = UDim2.new(1, -10, 0, 52)
+    f.Size = UDim2.new(1, -12, 0, 62)
     f.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
     f.BorderSizePixel = 0
     f.Parent = scroll
-    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 5)
+    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 6)
 
     local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -20, 0, 20)
-    lbl.Position = UDim2.new(0, 10, 0, 4)
+    lbl.Size = UDim2.new(1, -20, 0, 24)
+    lbl.Position = UDim2.new(0, 15, 0, 4)
     lbl.BackgroundTransparency = 1
     lbl.Text = text .. ": " .. default
     lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Font = Enum.Font.Gotham
-    lbl.TextSize = 12
+    lbl.TextSize = 15
     lbl.Parent = f
 
     local bar = Instance.new("Frame")
-    bar.Size = UDim2.new(1, -20, 0, 10)
-    bar.Position = UDim2.new(0, 10, 0, 32)
+    bar.Size = UDim2.new(1, -30, 0, 12)
+    bar.Position = UDim2.new(0, 15, 0, 38)
     bar.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
     bar.BorderSizePixel = 0
     bar.Parent = f
@@ -241,7 +255,7 @@ makeSlider("Max Dist", 50, 5000, CONFIG.ESPMaxDist, function(v) CONFIG.ESPMaxDis
 makeSection("MOVEMENT")
 makeToggle("Speed", CONFIG.Speed, function(v) CONFIG.Speed = v end)
 makeSlider("Speed Val", 16, 300, CONFIG.SpeedVal, function(v) CONFIG.SpeedVal = v end)
-makeToggle("Jump", CONFIG.Jump, function(v) CONFIG.Jump = v end)
+makeToggle("High Jump", CONFIG.Jump, function(v) CONFIG.Jump = v end)
 makeSlider("Jump Val", 50, 500, CONFIG.JumpVal, function(v) CONFIG.JumpVal = v end)
 makeToggle("Fly", CONFIG.Fly, function(v)
     CONFIG.Fly = v
@@ -263,6 +277,7 @@ makeToggle("Fly", CONFIG.Fly, function(v)
         if flyGyro then flyGyro:Destroy() flyGyro = nil end
     end
 end)
+makeSlider("Fly Speed", 20, 300, CONFIG.FlySpeed, function(v) CONFIG.FlySpeed = v end)
 
 -- Открытие/закрытие
 openBtn.MouseButton1Click:Connect(function()
@@ -290,9 +305,9 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 --========== ЭКРАННЫЕ КНОПКИ ==========
-local function makeHoldBtn(text, pos, onDown, onUp)
+local function makeHoldBtn(text, pos, size, onDown, onUp)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 70, 0, 70)
+    btn.Size = size
     btn.Position = pos
     btn.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
     btn.BackgroundTransparency = 0.3
@@ -313,7 +328,7 @@ local function makeHoldBtn(text, pos, onDown, onUp)
     end)
 end
 
-makeHoldBtn("AIM", UDim2.new(0, 15, 0, 200),
+makeHoldBtn("AIM", UDim2.new(0, 40, 0, 400), UDim2.new(0, 120, 0, 120),
     function() CONFIG.AimHeld = true end,
     function() CONFIG.AimHeld = false end)
 
@@ -337,9 +352,10 @@ local function isVisible(p, wallCheck)
     return true
 end
 
-local function getClosest(fov, wallCheck, teamCheck)
+local function getClosest(fovDeg, wallCheck, teamCheck)
+    local center, vp = getScreenCenter()
+    local fovPx = fovToPixels(fovDeg)
     local closest, cd = nil, math.huge
-    local center = Camera.ViewportSize / 2
     for _, p in ipairs(Players:GetPlayers()) do
         if p == LocalPlayer then continue end
         if isTeammate(p, teamCheck) then continue end
@@ -351,14 +367,15 @@ local function getClosest(fov, wallCheck, teamCheck)
         if not part then continue end
         if not isVisible(p, wallCheck) then continue end
         local sp, on = Camera:WorldToViewportPoint(part.Position)
-        if not on or sp.Z < 0 then continue end
+        if not on or sp.Z <= 0 then continue end
+        if sp.X < 0 or sp.Y < 0 or sp.X > vp.X or sp.Y > vp.Y then continue end
         local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
-        if d < fov and d < cd then cd = d; closest = p end
+        if d < fovPx and d < cd then cd = d; closest = p end
     end
     return closest
 end
 
--- Aimbot
+--========== AIMBOT ==========
 RunService.RenderStepped:Connect(function()
     if not CONFIG.Aim then return end
     local held = CONFIG.AimHeld or UserInputService:IsMouseButtonPressed(CONFIG.AimKey)
@@ -372,7 +389,7 @@ RunService.RenderStepped:Connect(function()
     Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(Camera.CFrame.Position, pos), CONFIG.AimSmooth)
 end)
 
--- Wallhack / ESP
+--========== WALLHACK / ESP ==========
 local function createESP(p)
     if p == LocalPlayer or espCache[p] then return end
     local box = Drawing.new("Square")
@@ -380,7 +397,7 @@ local function createESP(p)
     box.Color = Color3.fromRGB(255, 60, 60); box.Visible = false
 
     local nm = Drawing.new("Text")
-    nm.Size = 14; nm.Center = true; nm.Outline = true
+    nm.Size = 16; nm.Center = true; nm.Outline = true
     nm.Color = Color3.fromRGB(255, 255, 255); nm.Visible = false
 
     local hb = Drawing.new("Square")
@@ -388,13 +405,14 @@ local function createESP(p)
     hb.Color = Color3.fromRGB(0, 255, 0); hb.Visible = false
 
     local dt = Drawing.new("Text")
-    dt.Size = 12; dt.Center = true; dt.Outline = true
+    dt.Size = 14; dt.Center = true; dt.Outline = true
     dt.Color = Color3.fromRGB(200, 200, 200); dt.Visible = false
 
     espCache[p] = {box = box, name = nm, healthBar = hb, distText = dt}
 end
 
 RunService.RenderStepped:Connect(function()
+    local vp = Camera.ViewportSize
     for p, d in pairs(espCache) do
         local char = p.Character
         if not CONFIG.ESP or not char then
@@ -410,33 +428,49 @@ RunService.RenderStepped:Connect(function()
             d.healthBar.Visible = false; d.distText.Visible = false
             continue
         end
-        local hp = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
+
+        local hp, onScreen = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
         local hr = Camera:WorldToViewportPoint(root.Position - Vector3.new(0, 2.5, 0))
         local dist = (Camera.CFrame.Position - root.Position).Magnitude
-        if not hp.Z or hp.Z < 0 or dist > CONFIG.ESPMaxDist then
+
+        if not onScreen or hp.Z <= 0 or dist > CONFIG.ESPMaxDist then
             d.box.Visible = false; d.name.Visible = false
             d.healthBar.Visible = false; d.distText.Visible = false
             continue
         end
-        local h = math.abs(hp.Y - hr.Y); local w = h * 0.6
+
+        if hp.X < 0 or hp.Y < 0 or hp.X > vp.X or hp.Y > vp.Y then
+            d.box.Visible = false; d.name.Visible = false
+            d.healthBar.Visible = false; d.distText.Visible = false
+            continue
+        end
+
+        local h = math.abs(hp.Y - hr.Y)
+        if h < 5 then h = 5 end
+        local w = h * 0.6
+
         if CONFIG.ESPBox then
             d.box.Size = Vector2.new(w, h)
             d.box.Position = Vector2.new(hp.X - w / 2, hp.Y)
             d.box.Visible = true
         else d.box.Visible = false end
+
         if CONFIG.ESPName then
-            d.name.Position = Vector2.new(hp.X, hp.Y - 18)
-            d.name.Text = p.Name; d.name.Visible = true
+            d.name.Position = Vector2.new(hp.X, hp.Y - 22)
+            d.name.Text = p.Name
+            d.name.Visible = true
         else d.name.Visible = false end
+
         if CONFIG.ESPHealth then
-            local pct = hum.Health / hum.MaxHealth
-            d.healthBar.Size = Vector2.new(3, h * pct)
-            d.healthBar.Position = Vector2.new(hp.X - w / 2 - 6, hp.Y + h * (1 - pct))
+            local pct = hum.Health / math.max(hum.MaxHealth, 1)
+            d.healthBar.Size = Vector2.new(4, h * pct)
+            d.healthBar.Position = Vector2.new(hp.X - w / 2 - 8, hp.Y + h * (1 - pct))
             d.healthBar.Color = Color3.fromRGB(255 * (1 - pct), 255 * pct, 0)
             d.healthBar.Visible = true
         else d.healthBar.Visible = false end
+
         if CONFIG.ESPDist then
-            d.distText.Position = Vector2.new(hp.X, hp.Y + h + 4)
+            d.distText.Position = Vector2.new(hp.X, hp.Y + h + 6)
             d.distText.Text = string.format("[%d studs]", math.floor(dist))
             d.distText.Visible = true
         else d.distText.Visible = false end
@@ -446,7 +480,7 @@ end)
 for _, p in ipairs(Players:GetPlayers()) do createESP(p) end
 Players.PlayerAdded:Connect(createESP)
 
--- Speed / Jump / Fly
+--========== SPEED / HIGH JUMP / FLY ==========
 RunService.Heartbeat:Connect(function()
     local char = LocalPlayer.Character
     if not char then return end
@@ -486,9 +520,9 @@ if mt then
         if CONFIG.Silent and (method == "Fire" or method == "InvokeServer" or method == "FireServer") then
             local args = {...}
             if typeof(args[1]) == "Vector3" or typeof(args[1]) == "CFrame" then
-                local target = getClosest(CONFIG.SilentFOV, CONFIG.SilentWallCheck, CONFIG.SilentTeamCheck)
-                if target and math.random(1, 100) <= CONFIG.SilentHitChance then
-                    local char = target.Character
+                local t = getClosest(CONFIG.SilentFOV, CONFIG.SilentWallCheck, CONFIG.SilentTeamCheck)
+                if t and math.random(1, 100) <= CONFIG.SilentHitChance then
+                    local char = t.Character
                     local part = char and (char:FindFirstChild(CONFIG.AimPart) or char:FindFirstChild("HumanoidRootPart"))
                     if part then
                         if typeof(args[1]) == "Vector3" then
