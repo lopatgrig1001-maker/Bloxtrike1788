@@ -1,4 +1,4 @@
--- SILENT AIM через Camera.CFrame | Правильный порядок
+-- AIM INSTANT | Camera мгновенно на голову
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -9,9 +9,7 @@ local PG = LP:WaitForChild("PlayerGui")
 
 local FOV = 300
 local HOLD = false
-local SMOOTH = 0.5
 
--- FOV круг
 local circle = Drawing.new("Circle")
 circle.Thickness = 2
 circle.NumSides = 60
@@ -24,7 +22,6 @@ local function calcR()
     return (FOV / 90) * (math.sqrt(Cam.ViewportSize.X^2 + Cam.ViewportSize.Y^2) / 2)
 end
 
--- Сканер
 local function getTarget()
     local vp = Cam.ViewportSize
     local center = Vector2.new(vp.X/2, vp.Y/2)
@@ -49,7 +46,6 @@ local function getTarget()
     return best
 end
 
--- UI
 local sg = Instance.new("ScreenGui")
 sg.ResetOnSpawn = false
 sg.Parent = PG
@@ -65,12 +61,10 @@ aimBtn.TextScaled = true
 aimBtn.Font = Enum.Font.GothamBold
 aimBtn.Parent = sg
 Instance.new("UICorner", aimBtn).CornerRadius = UDim.new(1, 0)
-
 aimBtn.MouseButton1Down:Connect(function() HOLD = true end)
 aimBtn.MouseButton1Up:Connect(function() HOLD = false end)
 aimBtn.MouseLeave:Connect(function() HOLD = false end)
 
--- ГЛАВНЫЙ ЦИКЛ — поворачиваем камеру КАЖДЫЙ КАДР пока держишь AIM
 RunService.RenderStepped:Connect(function()
     circle.Position = Vector2.new(Cam.ViewportSize.X / 2, Cam.ViewportSize.Y / 2)
     circle.Radius = calcR()
@@ -81,10 +75,8 @@ RunService.RenderStepped:Connect(function()
     local target = getTarget()
     if not target then return end
     
-    -- Плавный поворот камеры — как настоящий aimbot
-    local pos = target.Position + target.AssemblyLinearVelocity * 0.05
-    local newCF = CFrame.lookAt(Cam.CFrame.Position, pos)
-    Cam.CFrame = Cam.CFrame:Lerp(newCF, SMOOTH)
+    -- МГНОВЕННО без сглаживания
+    Cam.CFrame = CFrame.lookAt(Cam.CFrame.Position, target.Position)
 end)
 
-print("[R] AIM via Camera.CFrame loaded")
+print("[R] INSTANT AIM loaded")
