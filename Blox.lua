@@ -1,88 +1,55 @@
--- FOV круг только | Без хуков
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local LP = Players.LocalPlayer
-local Cam = workspace.CurrentCamera
-local PG = LP:WaitForChild("PlayerGui")
-
-local FOV = 200
-local COLOR = Color3.fromRGB(255, 60, 60)
-
-local circle = Drawing.new("Circle")
-circle.Thickness = 2
-circle.NumSides = 60
-circle.Radius = (FOV / 90) * (math.sqrt(Cam.ViewportSize.X^2 + Cam.ViewportSize.Y^2) / 2)
-circle.Filled = false
-circle.Color = COLOR
-circle.Transparency = 0.8
-circle.Visible = true
-
-RunService.RenderStepped:Connect(function()
-    circle.Position = Vector2.new(Cam.ViewportSize.X / 2, Cam.ViewportSize.Y / 2)
-    circle.Radius = (FOV / 90) * (math.sqrt(Cam.ViewportSize.X^2 + Cam.ViewportSize.Y^2) / 2)
-end)
-
--- Небольшое меню
-local sg = Instance.new("ScreenGui")
-sg.ResetOnSpawn = false
-sg.Parent = PG
-
-local f = Instance.new("Frame")
-f.Size = UDim2.new(0, 260, 0, 100)
-f.Position = UDim2.new(0, 20, 0, 200)
-f.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
-f.BorderSizePixel = 0
-f.Parent = sg
-Instance.new("UICorner", f).CornerRadius = UDim.new(0, 10)
-
-local lbl = Instance.new("TextLabel")
-lbl.Size = UDim2.new(1, -20, 0, 26)
-lbl.Position = UDim2.new(0, 10, 0, 6)
-lbl.BackgroundTransparency = 1
-lbl.Text = "FOV: " .. FOV
-lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
-lbl.TextXAlignment = Enum.TextXAlignment.Left
-lbl.Font = Enum.Font.GothamBold
-lbl.TextSize = 14
-lbl.Parent = f
-
-local bar = Instance.new("Frame")
-bar.Size = UDim2.new(1, -20, 0, 12)
-bar.Position = UDim2.new(0, 10, 0, 40)
-bar.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-bar.BorderSizePixel = 0
-bar.Parent = f
-Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
-
-local fill = Instance.new("Frame")
-fill.Size = UDim2.new(0.4, 0, 1, 0)
-fill.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
-fill.BorderSizePixel = 0
-fill.Parent = bar
-Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
-
-local dragging = false
-local function setVal(x)
-    local rel = math.clamp((x - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
-    FOV = math.floor(50 + rel * 450)
-    fill.Size = UDim2.new(rel, 0, 1, 0)
-    lbl.Text = "FOV: " .. FOV
-    circle.Radius = (FOV / 90) * (math.sqrt(Cam.ViewportSize.X^2 + Cam.ViewportSize.Y^2) / 2)
+-- SILENT AIM через hookfunction (менее агрессивно чем __namecall)
+local function getTarget()
+    local vp = Cam.ViewportSize
+    local center = Vector2.new(vp.X/2, vp.Y/2)
+    local fovPx = (FOV / 90) * (math.sqrt(vp.X^2 + vp.Y^2) / 2)
+    local best, bd = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == LP then continue end
+        local char = p.Character
+        if not char then continue end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum and hum.Health <= 0 then continue end
+        if char:GetAttribute("Dead") then continue end
+        local head = char:FindFirstChild("Head")
+        if not head then continue end
+        local sp, on = Cam:WorldToViewportPoint(head.Position)
+        if not on or sp.Z <= 0 then continue end
+        local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+        if d < fovPx and d < bd then bd = d; best = head end
+    end
+    return best
 end
-bar.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-        dragging = true; setVal(i.Position.X)
-    end
-end)
-game:GetService("UserInputService").InputChanged:Connect(function(i)
-    if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-        setVal(i.Position.X)
-    end
-end)
-game:GetService("UserInputService").InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-        dragging = false
-    end
+
+-- Пытаемся хукнуть через __namecall (если не крашит)
+local success, err = pcall(function()
+    local mt = getrawmetatable(game)
+    if not mt then error("no mt") end
+    local old = mt.__namecall
+    setreadonly(mt, false)
+    mt.__namecall = newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        if method == "Fire" or method == "FireServer" or method == "InvokeServer" then
+            local args = {...}
+            if typeof(args[1]) == "Vector3" or typeof(args[1]) == "CFrame" then
+                local target = getTarget()
+                if target then
+                    if typeof(args[1]) == "Vector3" then
+                        args[1] = target.Position
+                    elseif typeof(args[1]) == "CFrame" then
+                        args[1] = CFrame.new(target.Position)
+                    end
+                end
+                return old(self, table.unpack(args))
+            end
+        end
+        return old(self, ...)
+    end)
+    setreadonly(mt, true)
 end)
 
-print("[R] FOV circle loaded")
+if success then
+    print("[R] SILENT via __namecall OK")
+else
+    warn("[R] __namecall failed:", err)
+end
