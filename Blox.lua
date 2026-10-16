@@ -1,125 +1,189 @@
--- BloxStrike Wallhack | Работает на живых игроках
+-- BloxStrike Hitbox + Column | BIG HEAD + RED TOWER
+-- Executor: Delta Mobile
 -- Живой матч обязателен
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local CONFIG = {
+    HeadSize = 8,          -- во сколько раз увеличить голову
+    ColumnHeight = 500,    -- высота столба в studs
+    ColumnWidth = 6,       -- ширина столба
+    ColumnColor = Color3.fromRGB(255, 40, 40),
+    ColumnMaterial = Enum.Material.Neon,
+    ColumnTransparency = 0.3
+}
 
 local cache = {}
 
-local function hasESP(p)
-    local c = cache[p]
-    return c and c.hl and c.hl.Parent
+local function isAlive(char)
+    local dead = char:GetAttribute("Dead")
+    if dead ~= nil then return not dead end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then return hum.Health > 0 end
+    return true
 end
 
-local function applyESP(p)
-    if p == LocalPlayer then return end
-    if hasESP(p) then return end
-    
+local function buildFor(p)
+    if p == LocalPlayer or cache[p] then return end
     local char = p.Character
-    if not char then return end
-    if char.Parent ~= Workspace then return end
-    
+    if not char or char.Parent ~= Workspace then return end
+
     local head = char:FindFirstChild("Head")
-    if not head then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not head or not root then return end
+
+    -- Увеличиваем голову
+    local origHeadSize = head.Size
+    local origHeadTransparency = head.Transparency
+    local origHeadCanCollide = head.CanCollide
     
-    -- Highlight
-    local hl = Instance.new("Highlight")
-    hl.FillColor = Color3.fromRGB(255, 40, 40)
-    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-    hl.FillTransparency = 0.5
-    hl.OutlineTransparency = 0
-    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    hl.Adornee = char
-    hl.Parent = char
-    
-    -- Billboard над головой
-    local bb = Instance.new("BillboardGui")
-    bb.Size = UDim2.new(0, 200, 0, 50)
-    bb.StudsOffset = Vector3.new(0, 3, 0)
-    bb.AlwaysOnTop = true
-    bb.Parent = head
-    
-    local nameLbl = Instance.new("TextLabel")
-    nameLbl.Size = UDim2.new(1, 0, 0, 20)
-    nameLbl.BackgroundTransparency = 1
-    nameLbl.Text = p.Name
-    nameLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
-    nameLbl.TextStrokeTransparency = 0
-    nameLbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    nameLbl.Font = Enum.Font.GothamBold
-    nameLbl.TextSize = 14
-    nameLbl.Parent = bb
-    
-    local hpLbl = Instance.new("TextLabel")
-    hpLbl.Size = UDim2.new(1, 0, 0, 16)
-    hpLbl.Position = UDim2.new(0, 0, 0, 22)
-    hpLbl.BackgroundTransparency = 1
-    hpLbl.Text = "100/100"
-    hpLbl.TextColor3 = Color3.fromRGB(0, 255, 0)
-    hpLbl.TextStrokeTransparency = 0
-    hpLbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    hpLbl.Font = Enum.Font.Gotham
-    hpLbl.TextSize = 12
-    hpLbl.Parent = bb
-    
-    cache[p] = {hl = hl, bb = bb, hpLbl = hpLbl, char = char}
-    print("[R] ESP on", p.Name)
+    pcall(function()
+        head.Size = Vector3.new(CONFIG.HeadSize, CONFIG.HeadSize, CONFIG.HeadSize)
+        head.Transparency = 0.3
+        head.CanCollide = false
+        head.Material = Enum.Material.Neon
+        head.BrickColor = BrickColor.new("Bright red")
+    end)
+
+    -- Красный столб до неба
+    local column = Instance.new("Part")
+    column.Name = "R_Column_" .. p.Name
+    column.Size = Vector3.new(CONFIG.ColumnWidth, CONFIG.ColumnHeight, CONFIG.ColumnWidth)
+    column.Anchored = true
+    column.CanCollide = false
+    column.CanQuery = false
+    column.CanTouch = false
+    column.Material = CONFIG.ColumnMaterial
+    column.Color = CONFIG.ColumnColor
+    column.Transparency = CONFIG.ColumnTransparency
+    column.Position = head.Position + Vector3.new(0, CONFIG.ColumnHeight / 2, 0)
+    column.Parent = Workspace
+
+    cache[p] = {
+        char = char,
+        head = head,
+        root = root,
+        column = column,
+        origHeadSize = origHeadSize,
+        origHeadTransparency = origHeadTransparency,
+        origHeadCanCollide = origHeadCanCollide
+    }
 end
 
-local function removeESP(p)
+local function removeFor(p)
     local c = cache[p]
     if not c then return end
-    if c.hl and c.hl.Parent then c.hl:Destroy() end
-    if c.bb and c.bb.Parent then c.bb:Destroy() end
+    
+    -- Возвращаем голову
+    if c.head and c.head.Parent then
+        pcall(function()
+            c.head.Size = c.origHeadSize
+            c.head.Transparency = c.origHeadTransparency
+            c.head.CanCollide = c.origHeadCanCollide
+        end)
+    end
+    
+    -- Убираем столб
+    if c.column and c.column.Parent then
+        c.column:Destroy()
+    end
+    
     cache[p] = nil
 end
 
--- Главный цикл — ищет всегда
+-- Постоянный цикл
 RunService.Heartbeat:Connect(function()
+    -- Строим для новых
     for _, p in ipairs(Players:GetPlayers()) do
         if p == LocalPlayer then continue end
-        applyESP(p)
-    end
-    
-    -- Чистим мёртвых / вышедших
-    for p, c in pairs(cache) do
         local char = p.Character
-        if not char or char.Parent ~= Workspace or not char:FindFirstChild("Head") then
-            removeESP(p)
+        if char and char.Parent == Workspace and char:FindFirstChild("Head") then
+            if not cache[p] then
+                buildFor(p)
+            end
         end
     end
     
-    -- Обновляем HP
+    -- Обновляем позицию столба и следим за головой
     for p, c in pairs(cache) do
         local char = p.Character
-        if not char or not c.hpLbl or not c.hpLbl.Parent then continue end
-        local hp = char:GetAttribute("Health")
-        local mhp = char:GetAttribute("MaxHealth")
-        if not hp then
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum then hp = hum.Health; mhp = hum.MaxHealth end
+        if not char or char.Parent ~= Workspace then
+            removeFor(p)
+            continue
         end
-        if hp and mhp and mhp > 0 then
-            local pct = math.clamp(hp / mhp, 0, 1)
-            c.hpLbl.Text = string.format("%d/%d", math.floor(hp), math.floor(mhp))
-            c.hpLbl.TextColor3 = Color3.fromRGB(255 * (1 - pct), 255 * pct, 0)
+        
+        local head = char:FindFirstChild("Head")
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not head or not root then
+            removeFor(p)
+            continue
+        end
+        
+        -- Если умер — убираем
+        if not isAlive(char) then
+            removeFor(p)
+            continue
+        end
+        
+        -- Обновляем голову если сбросилась
+        if head.Size ~= Vector3.new(CONFIG.HeadSize, CONFIG.HeadSize, CONFIG.HeadSize) then
+            pcall(function()
+                head.Size = Vector3.new(CONFIG.HeadSize, CONFIG.HeadSize, CONFIG.HeadSize)
+                head.Transparency = 0.3
+                head.CanCollide = false
+                head.Material = Enum.Material.Neon
+                head.BrickColor = BrickColor.new("Bright red")
+            end)
+        end
+        
+        -- Двигаем столб за головой
+        if c.column and c.column.Parent then
+            c.column.Position = head.Position + Vector3.new(0, CONFIG.ColumnHeight / 2, 0)
+        else
+            -- Столб удалился — пересоздаём
+            local column = Instance.new("Part")
+            column.Name = "R_Column_" .. p.Name
+            column.Size = Vector3.new(CONFIG.ColumnWidth, CONFIG.ColumnHeight, CONFIG.ColumnWidth)
+            column.Anchored = true
+            column.CanCollide = false
+            column.CanQuery = false
+            column.CanTouch = false
+            column.Material = CONFIG.ColumnMaterial
+            column.Color = CONFIG.ColumnColor
+            column.Transparency = CONFIG.ColumnTransparency
+            column.Position = head.Position + Vector3.new(0, CONFIG.ColumnHeight / 2, 0)
+            column.Parent = Workspace
+            c.column = column
         end
     end
 end)
 
--- Мгновенная попытка сразу
+-- Очистка при выходе игрока
+Players.PlayerRemoving:Connect(function(p)
+    removeFor(p)
+end)
+
+-- При респавне — перестроить
+Players.PlayerAdded:Connect(function(p)
+    p.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        removeFor(p)
+        buildFor(p)
+    end)
+end)
+
 for _, p in ipairs(Players:GetPlayers()) do
-    applyESP(p)
+    if p ~= LocalPlayer then
+        p.CharacterAdded:Connect(function()
+            task.wait(0.5)
+            removeFor(p)
+            buildFor(p)
+        end)
+        buildFor(p)
+    end
 end
 
-Players.PlayerAdded:Connect(function(p)
-    task.wait(1)
-    applyESP(p)
-end)
-
-Players.PlayerRemoving:Connect(removeESP)
-
-print("[R] WH loaded. Heartbeat ищет игроков постоянно.")
+print("[R] Hitbox + Column loaded.")
