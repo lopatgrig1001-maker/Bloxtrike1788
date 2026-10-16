@@ -1,4 +1,4 @@
--- FINAL AIMBOT | Работает. Без хуков. Без silent.
+-- TOUCH AIM | Имитация касаний через VirtualInputManager
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -10,7 +10,7 @@ local PG = LP:WaitForChild("PlayerGui")
 local CONFIG = {
     Enabled = true,
     FOV = 300,
-    Smooth = 0.5,
+    Smooth = 0.15,
     AimPart = "Head",
     Held = false
 }
@@ -40,7 +40,7 @@ local function getTarget()
         if char:GetAttribute("Dead") then continue end
         local hum = char:FindFirstChildOfClass("Humanoid")
         if hum and hum.Health <= 0 then continue end
-        local part = char:FindFirstChild(CONFIG.AimPart) or char:FindFirstChild("HumanoidRootPart")
+        local part = char:FindFirstChild(CONFIG.AimPart)
         if not part then continue end
         local pos = part.Position
         if math.abs(pos.X) < 0.5 and math.abs(pos.Z) < 0.5 then continue end
@@ -59,7 +59,7 @@ sg.Parent = PG
 
 local aimBtn = Instance.new("TextButton")
 aimBtn.Size = UDim2.new(0, 120, 0, 120)
-aimBtn.Position = UDim2.new(0, 20, 0, 250)
+aimBtn.Position = UDim2.new(0, 20, 0, 300)
 aimBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
 aimBtn.BackgroundTransparency = 0.25
 aimBtn.Text = "AIM"
@@ -82,65 +82,40 @@ aimBtn.MouseLeave:Connect(function()
     aimBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
 end)
 
--- FOV слайдер
-local fovFrame = Instance.new("Frame")
-fovFrame.Size = UDim2.new(0, 280, 0, 80)
-fovFrame.Position = UDim2.new(0, 160, 0, 260)
-fovFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
-fovFrame.BorderSizePixel = 0
-fovFrame.Parent = sg
-Instance.new("UICorner", fovFrame).CornerRadius = UDim.new(0, 10)
+--===== TOUCH AIM через VirtualInputManager =====
+-- Имитируем тач: двигаем "виртуальный палец" по экрану к цели
+local VIM = nil
+pcall(function()
+    VIM = game:GetService("VirtualInputManager")
+end)
 
-local fovLbl = Instance.new("TextLabel")
-fovLbl.Size = UDim2.new(1, -20, 0, 26)
-fovLbl.Position = UDim2.new(0, 10, 0, 6)
-fovLbl.BackgroundTransparency = 1
-fovLbl.Text = "FOV: " .. CONFIG.FOV
-fovLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
-fovLbl.TextXAlignment = Enum.TextXAlignment.Left
-fovLbl.Font = Enum.Font.GothamBold
-fovLbl.TextSize = 14
-fovLbl.Parent = fovFrame
+local touchActive = false
+local lastTouchX = 0
+local lastTouchY = 0
 
-local fovBar = Instance.new("Frame")
-fovBar.Size = UDim2.new(1, -20, 0, 12)
-fovBar.Position = UDim2.new(0, 10, 0, 44)
-fovBar.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-fovBar.BorderSizePixel = 0
-fovBar.Parent = fovFrame
-Instance.new("UICorner", fovBar).CornerRadius = UDim.new(1, 0)
-
-local fovFill = Instance.new("Frame")
-fovFill.Size = UDim2.new((CONFIG.FOV-50)/450, 0, 1, 0)
-fovFill.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
-fovFill.BorderSizePixel = 0
-fovFill.Parent = fovBar
-Instance.new("UICorner", fovFill).CornerRadius = UDim.new(1, 0)
-
-local dragging = false
-local function setFov(x)
-    local rel = math.clamp((x - fovBar.AbsolutePosition.X) / fovBar.AbsoluteSize.X, 0, 1)
-    CONFIG.FOV = math.floor(50 + rel * 450)
-    fovFill.Size = UDim2.new(rel, 0, 1, 0)
-    fovLbl.Text = "FOV: " .. CONFIG.FOV
+local function sendTouch(x, y)
+    if not VIM then return end
+    pcall(function()
+        if not touchActive then
+            VIM:SendMouseButtonEvent(x, y, 0, true, game, 1)
+            touchActive = true
+        else
+            VIM:SendMouseMoveEvent(x, y, game)
+        end
+        lastTouchX = x
+        lastTouchY = y
+    end)
 end
-fovBar.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-        dragging = true; setFov(i.Position.X)
-    end
-end)
-UserInputService.InputChanged:Connect(function(i)
-    if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-        setFov(i.Position.X)
-    end
-end)
-UserInputService.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-        dragging = false
-    end
-end)
 
--- ГЛАВНЫЙ ЦИКЛ
+local function endTouch()
+    if not VIM or not touchActive then return end
+    pcall(function()
+        VIM:SendMouseButtonEvent(lastTouchX, lastTouchY, 0, false, game, 1)
+    end)
+    touchActive = false
+end
+
+-- Главный цикл — пока держишь AIM, ведём палец к цели
 RunService.RenderStepped:Connect(function()
     circle.Position = Vector2.new(Cam.ViewportSize.X / 2, Cam.ViewportSize.Y / 2)
     circle.Radius = calcR()
@@ -148,14 +123,42 @@ RunService.RenderStepped:Connect(function()
     if not CONFIG.Enabled then return end
     
     local held = CONFIG.Held or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
-    if not held then return end
+    
+    if not held then
+        if touchActive then endTouch() end
+        return
+    end
     
     local target = getTarget()
-    if not target then return end
+    if not target then
+        if touchActive then endTouch() end
+        return
+    end
     
-    local pos = target.Position + target.AssemblyLinearVelocity * 0.05
-    local newCF = CFrame.lookAt(Cam.CFrame.Position, pos)
-    Cam.CFrame = Cam.CFrame:Lerp(newCF, CONFIG.Smooth)
+    -- Получаем экранные координаты головы врага
+    local sp, on = Cam:WorldToViewportPoint(target.Position)
+    if not on or sp.Z <= 0 then
+        if touchActive then endTouch() end
+        return
+    end
+    
+    -- Плавно ведём палец к цели
+    local targetX = sp.X
+    local targetY = sp.Y
+    
+    local curX = lastTouchX
+    local curY = lastTouchY
+    
+    if not touchActive then
+        -- Начинаем с текущей позиции прицела (центр экрана)
+        curX = Cam.ViewportSize.X / 2
+        curY = Cam.ViewportSize.Y / 2
+    end
+    
+    local newX = curX + (targetX - curX) * CONFIG.Smooth
+    local newY = curY + (targetY - curY) * CONFIG.Smooth
+    
+    sendTouch(newX, newY)
 end)
 
-print("[R] FINAL AIMBOT loaded")
+print("[R] TOUCH AIM loaded")
