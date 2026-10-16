@@ -1,4 +1,4 @@
--- [R] WH + TRIGGERBOT | Без аима, без хуков
+-- [R] WH + TRIGGERBOT + HITBOX + COLUMN | Полный
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -12,31 +12,37 @@ local CONFIG = {
     -- ESP
     ESP = true, ESPBox = true, ESPName = true, ESPHP = true, ESPDist = true,
     ESPMaxDist = 800, ESPColor = Color3.fromRGB(255, 60, 60),
+    -- Hitbox (большая голова)
+    Hitbox = false, HitboxSize = 8, HitboxTransparency = 0.3,
+    -- Column (красный столб)
+    Column = false, ColumnHeight = 500, ColumnWidth = 5,
     -- Triggerbot
-    TB = true, TBRadius = 40, TBDelay = 0.05,
+    TB = true, TBRadius = 60, TBDelay = 0.15,
     TBWallCheck = false,
-    TBParts = {"Head", "UpperTorso", "Torso", "HumanoidRootPart", "LowerTorso"}
+    TBParts = {"Head", "UpperTorso", "Torso", "HumanoidRootPart", "LowerTorso"},
+    -- Fire coords
+    FIRE_X = 1650, FIRE_Y = 500
 }
 
 local espCache = {}
+local hitboxCache = {}
+local columnCache = {}
 local lastShot = 0
+local shooting = false
 
---========== ХЕЛПЕРЫ ==========
+--========== HELPERS ==========
 local function ok(char)
     if not char then return false end
     return char:FindFirstChild("Head") and char:FindFirstChild("HumanoidRootPart")
 end
-
 local function dead(char)
     local d = char:GetAttribute("Dead")
     if d ~= nil then return d end
     local h = char:FindFirstChildOfClass("Humanoid")
     return h and h.Health <= 0 or false
 end
-
 local function getHP(char)
-    local h = char:GetAttribute("Health")
-    local m = char:GetAttribute("MaxHealth")
+    local h = char:GetAttribute("Health"); local m = char:GetAttribute("MaxHealth")
     if h and m then return h, m end
     local hum = char:FindFirstChildOfClass("Humanoid")
     if hum then return hum.Health, hum.MaxHealth end
@@ -53,48 +59,41 @@ local function mkESP(p)
     local d = Drawing.new("Text"); d.Size = 12; d.Center = true; d.Outline = true; d.Visible = false
     espCache[p] = {b=b, o=o, n=n, h=h, d=d}
 end
-
-local function hideESP(e)
+local function hideE(e)
     e.b.Visible = false; e.o.Visible = false; e.n.Visible = false; e.h.Visible = false; e.d.Visible = false
 end
 
 RunService.RenderStepped:Connect(function()
     for p, e in pairs(espCache) do
-        if not CONFIG.ESP then hideESP(e) continue end
+        if not CONFIG.ESP then hideE(e) continue end
         local char = p.Character
-        if not ok(char) or dead(char) then hideESP(e) continue end
+        if not ok(char) or dead(char) then hideE(e) continue end
         local head = char:FindFirstChild("Head")
         local root = char:FindFirstChild("HumanoidRootPart")
         local dist = (Cam.CFrame.Position - root.Position).Magnitude
-        if dist > CONFIG.ESPMaxDist then hideESP(e) continue end
+        if dist > CONFIG.ESPMaxDist then hideE(e) continue end
         local hp, on = Cam:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
         local fp = Cam:WorldToViewportPoint(root.Position - Vector3.new(0, 2.5, 0))
-        if not on or hp.Z <= 0 or hp.Z > 10000 then hideESP(e) continue end
+        if not on or hp.Z <= 0 then hideE(e) continue end
         local vp = Cam.ViewportSize
-        if hp.X < -300 or hp.Y < -300 or hp.X > vp.X + 300 or hp.Y > vp.Y + 300 then hideESP(e) continue end
+        if hp.X < -300 or hp.Y < -300 or hp.X > vp.X + 300 or hp.Y > vp.Y + 300 then hideE(e) continue end
         local hh = math.abs(fp.Y - hp.Y)
-        if hh < 8 or hh > 800 then hideESP(e) continue end
+        if hh < 8 or hh > 800 then hideE(e) continue end
         local w = hh * 0.55
         local bx, by = hp.X - w/2, hp.Y
-        
         if CONFIG.ESPBox then
             e.o.Size = Vector2.new(w+2, hh+2); e.o.Position = Vector2.new(bx-1, by-1); e.o.Visible = true
-            e.b.Size = Vector2.new(w, hh); e.b.Position = Vector2.new(bx, by)
-            e.b.Color = CONFIG.ESPColor; e.b.Visible = true
+            e.b.Size = Vector2.new(w, hh); e.b.Position = Vector2.new(bx, by); e.b.Color = CONFIG.ESPColor; e.b.Visible = true
         else e.b.Visible = false; e.o.Visible = false end
-        
         if CONFIG.ESPName then
-            e.n.Position = Vector2.new(hp.X, by - 20); e.n.Text = p.Name
-            e.n.Color = CONFIG.ESPColor; e.n.Visible = true
+            e.n.Position = Vector2.new(hp.X, by - 20); e.n.Text = p.Name; e.n.Color = CONFIG.ESPColor; e.n.Visible = true
         else e.n.Visible = false end
-        
         if CONFIG.ESPHP then
             local chp, mhp = getHP(char)
             local pct = mhp > 0 and math.clamp(chp/mhp, 0, 1) or 1
             e.h.Size = Vector2.new(3, hh*pct); e.h.Position = Vector2.new(bx - 7, by + hh*(1-pct))
             e.h.Color = Color3.fromRGB(255*(1-pct), 255*pct, 0); e.h.Visible = true
         else e.h.Visible = false end
-        
         if CONFIG.ESPDist then
             e.d.Position = Vector2.new(hp.X, by + hh + 4); e.d.Text = string.format("[%d]", math.floor(dist))
             e.d.Color = Color3.fromRGB(220, 220, 220); e.d.Visible = true
@@ -107,6 +106,88 @@ Players.PlayerAdded:Connect(mkESP)
 Players.PlayerRemoving:Connect(function(p)
     local e = espCache[p]
     if e then for _, v in pairs(e) do if v.Remove then v:Remove() end end espCache[p] = nil end
+end)
+
+--========== HITBOX + COLUMN ==========
+RunService.Heartbeat:Connect(function()
+    -- Hitbox
+    if CONFIG.Hitbox then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p == LP then continue end
+            local char = p.Character
+            if ok(char) then
+                local head = char:FindFirstChild("Head")
+                if head then
+                    pcall(function()
+                        head.Size = Vector3.new(CONFIG.HitboxSize, CONFIG.HitboxSize, CONFIG.HitboxSize)
+                        head.Transparency = CONFIG.HitboxTransparency
+                        head.CanCollide = false
+                        head.Material = Enum.Material.Neon
+                        head.BrickColor = BrickColor.new("Bright red")
+                    end)
+                    hitboxCache[p] = true
+                end
+            elseif hitboxCache[p] then
+                hitboxCache[p] = nil
+            end
+        end
+    else
+        for p in pairs(hitboxCache) do
+            local char = p.Character
+            local head = char and char:FindFirstChild("Head")
+            if head then
+                pcall(function()
+                    head.Size = Vector3.new(2, 1, 1)
+                    head.Transparency = 0
+                    head.CanCollide = true
+                end)
+            end
+            hitboxCache[p] = nil
+        end
+    end
+    
+    -- Column
+    if CONFIG.Column then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p == LP then continue end
+            local char = p.Character
+            if ok(char) and not columnCache[p] then
+                local head = char:FindFirstChild("Head")
+                if head then
+                    local col = Instance.new("Part")
+                    col.Name = "R_Col_" .. p.Name
+                    col.Size = Vector3.new(CONFIG.ColumnWidth, CONFIG.ColumnHeight, CONFIG.ColumnWidth)
+                    col.Anchored = true
+                    col.CanCollide = false
+                    col.CanQuery = false
+                    col.CanTouch = false
+                    col.Material = Enum.Material.Neon
+                    col.Color = Color3.fromRGB(255, 40, 40)
+                    col.Transparency = 0.3
+                    col.Position = head.Position + Vector3.new(0, CONFIG.ColumnHeight/2, 0)
+                    col.Parent = Workspace
+                    columnCache[p] = col
+                end
+            end
+        end
+        for p, col in pairs(columnCache) do
+            local char = p.Character
+            if not ok(char) then
+                if col.Parent then col:Destroy() end
+                columnCache[p] = nil
+            else
+                local head = char:FindFirstChild("Head")
+                if head and col.Parent then
+                    col.Position = head.Position + Vector3.new(0, CONFIG.ColumnHeight/2, 0)
+                end
+            end
+        end
+    else
+        for p, col in pairs(columnCache) do
+            if col.Parent then col:Destroy() end
+            columnCache[p] = nil
+        end
+    end
 end)
 
 --========== TRIGGERBOT ==========
@@ -140,18 +221,26 @@ local function getTargetInCrosshair()
     return nil
 end
 
-local function click()
-    pcall(function()
-        VIM:SendMouseButtonEvent(Cam.ViewportSize.X / 2, Cam.ViewportSize.Y / 2, 0, true, game, 1)
-        task.wait(0.01)
-        VIM:SendMouseButtonEvent(Cam.ViewportSize.X / 2, Cam.ViewportSize.Y / 2, 0, false, game, 1)
+local function fireClick()
+    if shooting then return end
+    shooting = true
+    task.spawn(function()
+        pcall(function()
+            VIM:SendMouseButtonEvent(CONFIG.FIRE_X, CONFIG.FIRE_Y, 0, true, game, 1)
+        end)
+        task.wait(0.05)
+        pcall(function()
+            VIM:SendMouseButtonEvent(CONFIG.FIRE_X, CONFIG.FIRE_Y, 0, false, game, 1)
+        end)
+        shooting = false
     end)
 end
 
 --========== GUI ==========
 local sg = Instance.new("ScreenGui")
-sg.Name = "R_WH_TB"
+sg.Name = "R_WH_FULL"
 sg.ResetOnSpawn = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 sg.Parent = PG
 
 local openBtn = Instance.new("TextButton")
@@ -167,8 +256,8 @@ openBtn.Parent = sg
 Instance.new("UICorner", openBtn).CornerRadius = UDim.new(1, 0)
 
 local panel = Instance.new("Frame")
-panel.Size = UDim2.new(0, 340, 0, 600)
-panel.Position = UDim2.new(0, 100, 0, 100)
+panel.Size = UDim2.new(0, 360, 0, 800)
+panel.Position = UDim2.new(0, 100, 0, 80)
 panel.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
 panel.BorderSizePixel = 0
 panel.Visible = false
@@ -186,7 +275,7 @@ local ttl = Instance.new("TextLabel")
 ttl.Size = UDim2.new(1, -20, 1, 0)
 ttl.Position = UDim2.new(0, 15, 0, 0)
 ttl.BackgroundTransparency = 1
-ttl.Text = "[R] WH + Trigger"
+ttl.Text = "[R] WH + Trigger + Hitbox"
 ttl.TextColor3 = Color3.fromRGB(255, 255, 255)
 ttl.TextXAlignment = Enum.TextXAlignment.Left
 ttl.Font = Enum.Font.GothamBold
@@ -194,12 +283,12 @@ ttl.TextSize = 18
 ttl.Parent = hdr
 
 local scroll = Instance.new("ScrollingFrame")
-scroll.Size = UDim2.new(1, -16, 1, -60)
+scroll.Size = UDim2.new(1, -16, 1, -110)
 scroll.Position = UDim2.new(0, 8, 0, 54)
 scroll.BackgroundTransparency = 1
 scroll.BorderSizePixel = 0
 scroll.ScrollBarThickness = 5
-scroll.CanvasSize = UDim2.new(0, 0, 0, 1500)
+scroll.CanvasSize = UDim2.new(0, 0, 0, 2500)
 scroll.Parent = panel
 
 local layout = Instance.new("UIListLayout")
@@ -318,13 +407,37 @@ mkT("Health", CONFIG.ESPHP, function(v) CONFIG.ESPHP = v end)
 mkT("Distance", CONFIG.ESPDist, function(v) CONFIG.ESPDist = v end)
 mkS("Max Dist", 50, 2000, CONFIG.ESPMaxDist, function(v) CONFIG.ESPMaxDist = v end)
 
+mkSec("HITBOX (большая голова)")
+mkT("Hitbox", CONFIG.Hitbox, function(v) CONFIG.Hitbox = v end)
+mkS("Размер головы", 3, 30, CONFIG.HitboxSize, function(v) CONFIG.HitboxSize = v end)
+mkS("Прозрачность %", 0, 100, CONFIG.HitboxTransparency * 100, function(v) CONFIG.HitboxTransparency = v / 100 end)
+
+mkSec("COLUMN (столб до неба)")
+mkT("Column", CONFIG.Column, function(v) CONFIG.Column = v end)
+mkS("Высота", 50, 2000, CONFIG.ColumnHeight, function(v) CONFIG.ColumnHeight = v end)
+mkS("Ширина", 1, 30, CONFIG.ColumnWidth, function(v) CONFIG.ColumnWidth = v end)
+
 mkSec("TRIGGERBOT")
 mkT("Triggerbot", CONFIG.TB, function(v) CONFIG.TB = v end)
 mkS("Радиус (px)", 5, 200, CONFIG.TBRadius, function(v) CONFIG.TBRadius = v end)
-mkS("Задержка x100", 1, 50, math.floor(CONFIG.TBDelay*100), function(v) CONFIG.TBDelay = v/100 end)
+mkS("Задержка x100", 5, 50, math.floor(CONFIG.TBDelay*100), function(v) CONFIG.TBDelay = v/100 end)
 mkT("Wall Check", CONFIG.TBWallCheck, function(v) CONFIG.TBWallCheck = v end)
 
--- TRIGGER кнопка на экране
+mkSec("FIRE BUTTON POS")
+mkS("Fire X", 0, 2800, CONFIG.FIRE_X, function(v) CONFIG.FIRE_X = v end)
+mkS("Fire Y", 0, 1400, CONFIG.FIRE_Y, function(v) CONFIG.FIRE_Y = v end)
+
+local status = Instance.new("TextLabel")
+status.Size = UDim2.new(1, -16, 0, 40)
+status.Position = UDim2.new(0, 8, 1, -50)
+status.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+status.Text = "TB: жду"
+status.TextColor3 = Color3.fromRGB(200, 200, 200)
+status.Font = Enum.Font.Code
+status.TextSize = 14
+status.Parent = panel
+Instance.new("UICorner", status).CornerRadius = UDim.new(0, 6)
+
 local tbBtn = Instance.new("TextButton")
 tbBtn.Size = UDim2.new(0, 100, 0, 100)
 tbBtn.Position = UDim2.new(0, 20, 0, 260)
@@ -342,7 +455,49 @@ tbBtn.MouseButton1Click:Connect(function()
     tbBtn.BackgroundColor3 = CONFIG.TB and Color3.fromRGB(80, 200, 120) or Color3.fromRGB(100, 30, 30)
 end)
 
--- Crosshair circle для Trigger
+local hbBtn = Instance.new("TextButton")
+hbBtn.Size = UDim2.new(0, 100, 0, 100)
+hbBtn.Position = UDim2.new(0, 20, 0, 380)
+hbBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+hbBtn.BackgroundTransparency = 0.25
+hbBtn.Text = "HB OFF"
+hbBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+hbBtn.TextScaled = true
+hbBtn.Font = Enum.Font.GothamBold
+hbBtn.Parent = sg
+Instance.new("UICorner", hbBtn).CornerRadius = UDim.new(1, 0)
+hbBtn.MouseButton1Click:Connect(function()
+    CONFIG.Hitbox = not CONFIG.Hitbox
+    hbBtn.Text = CONFIG.Hitbox and "HB ON" or "HB OFF"
+    hbBtn.BackgroundColor3 = CONFIG.Hitbox and Color3.fromRGB(80, 200, 120) or Color3.fromRGB(30, 30, 40)
+end)
+
+local colBtn = Instance.new("TextButton")
+colBtn.Size = UDim2.new(0, 100, 0, 100)
+colBtn.Position = UDim2.new(0, 20, 0, 500)
+colBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+colBtn.BackgroundTransparency = 0.25
+colBtn.Text = "COL OFF"
+colBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+colBtn.TextScaled = true
+colBtn.Font = Enum.Font.GothamBold
+colBtn.Parent = sg
+Instance.new("UICorner", colBtn).CornerRadius = UDim.new(1, 0)
+colBtn.MouseButton1Click:Connect(function()
+    CONFIG.Column = not CONFIG.Column
+    colBtn.Text = CONFIG.Column and "COL ON" or "COL OFF"
+    colBtn.BackgroundColor3 = CONFIG.Column and Color3.fromRGB(255, 60, 60) or Color3.fromRGB(30, 30, 40)
+end)
+
+-- FIRE точка
+local fireDot = Drawing.new("Circle")
+fireDot.Radius = 10
+fireDot.Filled = true
+fireDot.Color = Color3.fromRGB(255, 200, 0)
+fireDot.Transparency = 0.5
+fireDot.Visible = true
+
+-- Crosshair
 local tbCircle = Drawing.new("Circle")
 tbCircle.Thickness = 2
 tbCircle.NumSides = 40
@@ -351,18 +506,6 @@ tbCircle.Color = Color3.fromRGB(0, 255, 100)
 tbCircle.Transparency = 0.7
 tbCircle.Visible = true
 tbCircle.Radius = CONFIG.TBRadius
-
--- Status
-local status = Instance.new("TextLabel")
-status.Size = UDim2.new(0, 280, 0, 30)
-status.Position = UDim2.new(0, 130, 0, 260)
-status.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-status.BackgroundTransparency = 0.3
-status.Text = "TB: жду цель"
-status.TextColor3 = Color3.fromRGB(200, 200, 200)
-status.Font = Enum.Font.Code
-status.TextSize = 14
-status.Parent = sg
 
 -- Drag
 local dragStart, startPos
@@ -383,11 +526,14 @@ end)
 
 openBtn.MouseButton1Click:Connect(function() panel.Visible = not panel.Visible end)
 
---========== ГЛАВНЫЙ ЦИКЛ TB ==========
+--========== MAIN LOOP ==========
 RunService.RenderStepped:Connect(function()
     tbCircle.Position = Vector2.new(Cam.ViewportSize.X / 2, Cam.ViewportSize.Y / 2)
     tbCircle.Radius = CONFIG.TBRadius
     tbCircle.Visible = CONFIG.TB
+    
+    fireDot.Position = Vector2.new(CONFIG.FIRE_X, CONFIG.FIRE_Y)
+    fireDot.Visible = CONFIG.TB
     
     if not CONFIG.TB then
         status.Text = "TB: OFF"
@@ -400,9 +546,9 @@ RunService.RenderStepped:Connect(function()
         status.Text = "ЦЕЛЬ: " .. (player and player.Name or "?")
         status.TextColor3 = Color3.fromRGB(0, 255, 100)
         local now = tick()
-        if now - lastShot >= CONFIG.TBDelay then
+        if now - lastShot >= CONFIG.TBDelay and not shooting then
             lastShot = now
-            click()
+            fireClick()
         end
     else
         status.Text = "TB: жду цель"
@@ -410,4 +556,4 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("[R] WH + TRIGGERBOT loaded")
+print("[R] WH + Trigger + Hitbox + Column loaded")
