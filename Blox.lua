@@ -1,4 +1,4 @@
--- AIMBOT TEST | Без хуков | С отладкой
+-- SILENT AIM через Camera.CFrame | Правильный порядок
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -9,40 +9,7 @@ local PG = LP:WaitForChild("PlayerGui")
 
 local FOV = 300
 local HOLD = false
-
-local sg = Instance.new("ScreenGui")
-sg.ResetOnSpawn = false
-sg.Parent = PG
-
--- Отладочный текст
-local dbg = Instance.new("TextLabel")
-dbg.Size = UDim2.new(0, 600, 0, 80)
-dbg.Position = UDim2.new(0, 20, 0, 60)
-dbg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-dbg.BackgroundTransparency = 0.3
-dbg.TextColor3 = Color3.fromRGB(255, 255, 255)
-dbg.TextXAlignment = Enum.TextXAlignment.Left
-dbg.Font = Enum.Font.Code
-dbg.TextSize = 14
-dbg.TextWrapped = true
-dbg.Parent = sg
-
--- AIM кнопка
-local aimBtn = Instance.new("TextButton")
-aimBtn.Size = UDim2.new(0, 100, 0, 100)
-aimBtn.Position = UDim2.new(0, 20, 0, 200)
-aimBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-aimBtn.BackgroundTransparency = 0.3
-aimBtn.Text = "AIM"
-aimBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-aimBtn.TextScaled = true
-aimBtn.Font = Enum.Font.GothamBold
-aimBtn.Parent = sg
-Instance.new("UICorner", aimBtn).CornerRadius = UDim.new(1, 0)
-
-aimBtn.MouseButton1Down:Connect(function() HOLD = true end)
-aimBtn.MouseButton1Up:Connect(function() HOLD = false end)
-aimBtn.MouseLeave:Connect(function() HOLD = false end)
+local SMOOTH = 0.5
 
 -- FOV круг
 local circle = Drawing.new("Circle")
@@ -57,43 +24,7 @@ local function calcR()
     return (FOV / 90) * (math.sqrt(Cam.ViewportSize.X^2 + Cam.ViewportSize.Y^2) / 2)
 end
 
--- Считаем сколько игроков валидны
-local function scanPlayers()
-    local valid = 0
-    local total = 0
-    local lines = {}
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p == LP then continue end
-        total = total + 1
-        local char = p.Character
-        if not char then
-            table.insert(lines, p.Name .. ": no char")
-            continue
-        end
-        local head = char:FindFirstChild("Head")
-        if not head then
-            table.insert(lines, p.Name .. ": no head")
-            continue
-        end
-        local pos = head.Position
-        -- отсев (0,106,0)
-        if math.abs(pos.X) < 0.5 and math.abs(pos.Z) < 0.5 then
-            table.insert(lines, p.Name .. ": fake pos")
-            continue
-        end
-        local sp, on = Cam:WorldToViewportPoint(pos)
-        if not on or sp.Z <= 0 then
-            table.insert(lines, p.Name .. ": behind camera")
-            continue
-        end
-        local dist = (Cam.CFrame.Position - pos).Magnitude
-        table.insert(lines, string.format("%s: OK %.0f studs XY(%.0f,%.0f)", p.Name, dist, sp.X, sp.Y))
-        valid = valid + 1
-    end
-    return valid, total, lines
-end
-
--- Поиск цели
+-- Сканер
 local function getTarget()
     local vp = Cam.ViewportSize
     local center = Vector2.new(vp.X/2, vp.Y/2)
@@ -118,25 +49,42 @@ local function getTarget()
     return best
 end
 
+-- UI
+local sg = Instance.new("ScreenGui")
+sg.ResetOnSpawn = false
+sg.Parent = PG
+
+local aimBtn = Instance.new("TextButton")
+aimBtn.Size = UDim2.new(0, 110, 0, 110)
+aimBtn.Position = UDim2.new(0, 20, 0, 250)
+aimBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+aimBtn.BackgroundTransparency = 0.3
+aimBtn.Text = "AIM"
+aimBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+aimBtn.TextScaled = true
+aimBtn.Font = Enum.Font.GothamBold
+aimBtn.Parent = sg
+Instance.new("UICorner", aimBtn).CornerRadius = UDim.new(1, 0)
+
+aimBtn.MouseButton1Down:Connect(function() HOLD = true end)
+aimBtn.MouseButton1Up:Connect(function() HOLD = false end)
+aimBtn.MouseLeave:Connect(function() HOLD = false end)
+
+-- ГЛАВНЫЙ ЦИКЛ — поворачиваем камеру КАЖДЫЙ КАДР пока держишь AIM
 RunService.RenderStepped:Connect(function()
     circle.Position = Vector2.new(Cam.ViewportSize.X / 2, Cam.ViewportSize.Y / 2)
     circle.Radius = calcR()
     
     local held = HOLD or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
-    local valid, total, lines = scanPlayers()
-    
-    local txt = "FOV: " .. FOV .. " | Valid: " .. valid .. "/" .. total .. " | Held: " .. tostring(held) .. "\n"
-    txt = txt .. table.concat(lines, " | ")
-    dbg.Text = txt
-    
     if not held then return end
     
     local target = getTarget()
     if not target then return end
     
-    -- Поворачиваем камеру
-    local oldCF = Cam.CFrame
-    Cam.CFrame = CFrame.lookAt(Cam.CFrame.Position, target.Position)
+    -- Плавный поворот камеры — как настоящий aimbot
+    local pos = target.Position + target.AssemblyLinearVelocity * 0.05
+    local newCF = CFrame.lookAt(Cam.CFrame.Position, pos)
+    Cam.CFrame = Cam.CFrame:Lerp(newCF, SMOOTH)
 end)
 
-print("[R] AIMBOT TEST loaded")
+print("[R] AIM via Camera.CFrame loaded")
