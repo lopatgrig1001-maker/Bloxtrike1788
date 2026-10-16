@@ -1,13 +1,15 @@
--- SILENT AIM | hook FindPartOnRayWithIgnoreList
+-- SILENT AIM | через Camera.CFrame — БЕЗ ХУКОВ
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 local LP = Players.LocalPlayer
 local Cam = Workspace.CurrentCamera
 
 local CONFIG = {
     Enabled = true,
-    FOV = 250
+    FOV = 250,
+    ShootKey = Enum.UserInputType.MouseButton1 -- левая кнопка = выстрел
 }
 
 -- FOV круг
@@ -50,35 +52,33 @@ local function getTarget()
     return best
 end
 
-local mt = getrawmetatable(game)
-if mt then
-    local oldNamecall = mt.__namecall
-    setreadonly(mt, false)
-    
-    mt.__namecall = newcclosure(function(self, ...)
-        local method = getnamecallmethod()
-        
-        -- FindPartOnRayWithIgnoreList возвращает (Part, Position, Normal, Material)
-        -- Мы подменяем возврат — говорим игре "попадание в голову"
-        if CONFIG.Enabled and method == "FindPartOnRayWithIgnoreList" then
-            local args = {...}
-            local target = getTarget()
-            if target then
-                -- Меняем origin/direction так чтобы луч летел в голову
-                if typeof(args[1]) == "Ray" then
-                    local ray = args[1]
-                    local newDir = (target.Position - ray.Origin)
-                    args[1] = Ray.new(ray.Origin, newDir)
-                end
-            end
-            return oldNamecall(self, table.unpack(args))
-        end
-        
-        return oldNamecall(self, ...)
-    end)
-    
-    setreadonly(mt, true)
-    print("[R] SILENT hooked on FindPartOnRayWithIgnoreList")
-end
+-- Запоминаем настоящий CFrame
+local realCamCF = Cam.CFrame
+RunService.RenderStepped:Connect(function()
+    -- если стреляем — НЕ восстанавливаем, чтобы выстрел ушёл в цель
+    if not _G.R_SILENT_HOLD then
+        realCamCF = Cam.CFrame
+    end
+end)
 
-print("[R] SILENT loaded v2")
+-- Хук на нажатие мыши
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if not CONFIG.Enabled then return end
+    if input.UserInputType == CONFIG.ShootKey then
+        local target = getTarget()
+        if not target then return end
+        -- На один кадр поворачиваем камеру в голову
+        local saved = Cam.CFrame
+        Cam.CFrame = CFrame.lookAt(Cam.CFrame.Position, target.Position)
+        _G.R_SILENT_HOLD = true
+        -- Ждём пока выстрел уйдёт
+        task.wait()
+        task.wait()
+        -- Возвращаем назад
+        Cam.CFrame = saved
+        _G.R_SILENT_HOLD = false
+    end
+end)
+
+print("[R] SILENT via Camera.CFrame loaded")
