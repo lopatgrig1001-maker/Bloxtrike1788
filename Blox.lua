@@ -1,4 +1,4 @@
--- [[ ПОЛНЫЙ ОТКРЫТЫЙ ИСХОДНЫЙ КОД: AIMBOT + ESP SUITE (BLOXSTRIKE) ]] --
+-- [[ ОТКРЫТЫЙ МОБИЛЬНЫЙ СКРИПТ: MENU + AIMBOT + ESP (NO KEY) ]] --
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -6,193 +6,157 @@ local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
--- ФУНКЦИЯ 1: ГЛОБАЛЬНЫЕ НАСТРОЙКИ (Конфиг чита)
-local Config = {
-    AimEnabled = true,
-    AimKey = Enum.KeyCode.E,          -- Кнопка активации аима
-    AimPart = "HumanoidRootPart",    -- Куда целиться
-    AimRadius = 150,                 -- Радиус FOV круга
-    AimSmooth = 0.12,                -- Плавность доводки мыши
-    
-    EspEnabled = true,
-    EspBoxes = true,                 -- Отображение 2D Квадратов
-    EspLines = true,                 -- Линии (Трейсеры) до врагов
-    EspHealth = true,                -- Полоска здоровья врага
-    EspDistance = true,              -- Расстояние в метрах
-    TeamCheck = true                 -- Проверка на союзников
-}
+-- Переменные функций управления
+_G.AimbotEnabled = false
+_G.EspEnabled = false
+_G.AimRadius = 140
+_G.AimSmooth = 0.12
 
--- ФУНКЦИЯ 2: ОТРИСОВКА КРУГА ФОКУСА (FOV)
+-- 1. ОТРИСОВКА ИНТЕРФЕЙСА (МЕНЮ)
+local ScreenGui = Instance.new("ScreenGui")
+local MainFrame = Instance.new("Frame")
+local Title = Instance.new("TextLabel")
+local ToggleAim = Instance.new("TextButton")
+local ToggleEsp = Instance.new("TextButton")
+local CloseBtn = Instance.new("TextButton")
+
+ScreenGui.Parent = game:GetService("CoreGui") or LocalPlayer:WaitForChild("PlayerGui")
+ScreenGui.ResetOnSpawn = false
+
+MainFrame.Name = "MobileMenu"
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+MainFrame.Position = UDim2.new(0.1, 0, 0.2, 0)
+MainFrame.Size = UDim2.new(0, 220, 0, 180)
+MainFrame.Active = true
+MainFrame.Draggable = true -- Меню можно двигать пальцем по экрану
+
+Title.Parent = MainFrame
+Title.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.Text = "BloxStrike Keyless Suite"
+Title.TextColor3 = Color3.fromRGB(0, 255, 150)
+Title.TextSize = 16
+
+ToggleAim.Parent = MainFrame
+ToggleAim.Position = UDim2.new(0.05, 0, 0.25, 0)
+ToggleAim.Size = UDim2.new(0.9, 0, 0, 35)
+ToggleAim.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+ToggleAim.Text = "Aimbot: OFF"
+ToggleAim.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleAim.TextSize = 14
+
+ToggleEsp.Parent = MainFrame
+ToggleEsp.Position = UDim2.new(0.05, 0, 0.50, 0)
+ToggleEsp.Size = UDim2.new(0.9, 0, 0, 35)
+ToggleEsp.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+ToggleEsp.Text = "ESP Boxes: OFF"
+ToggleEsp.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleEsp.TextSize = 14
+
+CloseBtn.Parent = MainFrame
+CloseBtn.Position = UDim2.new(0.05, 0, 0.75, 0)
+CloseBtn.Size = UDim2.new(0.9, 0, 0, 30)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+CloseBtn.Text = "СВЕРНУТЬ МЕНЮ"
+CloseBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+
+-- Включение кнопок меню
+ToggleAim.MouseButton1Click:Connect(function()
+    _G.AimbotEnabled = not _G.AimbotEnabled
+    ToggleAim.Text = _G.AimbotEnabled and "Aimbot: ON" or "Aimbot: OFF"
+    ToggleAim.BackgroundColor3 = _G.AimbotEnabled and Color3.fromRGB(0, 120, 0) or Color3.fromRGB(150, 0, 0)
+end)
+
+ToggleEsp.MouseButton1Click:Connect(function()
+    _G.EspEnabled = not _G.EspEnabled
+    ToggleEsp.Text = _G.EspEnabled and "ESP Boxes: ON" or "ESP Boxes: OFF"
+    ToggleEsp.BackgroundColor3 = _G.EspEnabled and Color3.fromRGB(0, 120, 0) or Color3.fromRGB(150, 0, 0)
+end)
+
+local IsOpen = true
+CloseBtn.MouseButton1Click:Connect(function()
+    IsOpen = not IsOpen
+    MainFrame.Size = IsOpen and UDim2.new(0, 220, 0, 180) or UDim2.new(0, 220, 0, 30)
+    ToggleAim.Visible = IsOpen
+    ToggleEsp.Visible = IsOpen
+end)
+
+-- 2. ЛОГИКА AIMBOT И МОБИЛЬНОЙ КАМЕРЫ
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Thickness = 1.5
-FOVCircle.Color = Color3.fromRGB(0, 255, 255) -- Бирюзовый круг
-FOVCircle.Radius = Config.AimRadius
+FOVCircle.Color = Color3.fromRGB(0, 255, 255)
+FOVCircle.Radius = _G.AimRadius
 FOVCircle.Filled = false
-FOVCircle.Visible = Config.AimEnabled
+FOVCircle.Visible = true
 
--- ФУНКЦИЯ 3: СИНХРОНИЗАЦИЯ КРУГА С МЫШКОЙ
 RunService.RenderStepped:Connect(function()
-    if FOVCircle then
-        local MousePos = UserInputService:GetMouseLocation()
-        FOVCircle.Position = Vector2.new(MousePos.X, MousePos.Y)
-    end
+    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    FOVCircle.Visible = _G.AimbotEnabled
 end)
 
--- ФУНКЦИЯ 4: УНИВЕРСАЛЬНЫЙ СКАНЕР ДЛЯ ПОИСКА БЛИЖАЙШЕЙ ЦЕЛИ
-local function GetClosestEnemyInFOV()
-    local MaxDist = Config.AimRadius
-    local ClosestTarget = nil
-    local MousePos = UserInputService:GetMouseLocation()
+local function GetClosestTarget()
+    local CurrentTarget = nil
+    local MaxDistance = _G.AimRadius
+    local CenterScreen = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
 
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild(Config.AimPart) then
-            -- Двойная проверка на команду (Team Check)
-            if Config.TeamCheck and player.Team == LocalPlayer.Team then continue end
-            
-            -- Проверка здоровья цели
-            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-            if humanoid and humanoid.Health <= 0 then continue end
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Head") then
+            if p.Team == LocalPlayer.Team then continue end
+            local hum = p.Character:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health <= 0 then continue end
 
-            local ScreenPos, OnScreen = Camera:WorldToViewportPoint(player.Character[Config.AimPart].Position)
-            
-            if OnScreen then
-                local DistanceToMouse = (Vector2.new(ScreenPos.X, ScreenPos.Y) - MousePos).Magnitude
-                -- Проверяем, входит ли цель в радиус нашего круга
-                if DistanceToMouse < MaxDist then
-                    MaxDist = DistanceToMouse
-                    ClosestTarget = player.Character[Config.AimPart]
+            local Pos, Visible = Camera:WorldToViewportPoint(p.Character.Head.Position)
+            if Visible then
+                local Distance = (Vector2.new(Pos.X, Pos.Y) - CenterScreen).Magnitude
+                if Distance < MaxDistance then
+                    MaxDistance = Distance
+                    CurrentTarget = p.Character.Head
                 end
             end
         end
     end
-    return ClosestTarget
+    return CurrentTarget
 end
 
--- ФУНКЦИЯ 5: РАБОТА АИМБОТА ЧЕРЕЗ ЭМУЛЯЦИЮ МЫШИ (mousemoverel)
 RunService.RenderStepped:Connect(function()
-    if Config.AimEnabled and (UserInputService:IsKeyDown(Config.AimKey) or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)) then
-        local Target = GetClosestEnemyInFOV()
+    if _G.AimbotEnabled and (UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)) then
+        local Target = GetClosestTarget()
         if Target then
-            local ScreenPos, OnScreen = Camera:WorldToViewportPoint(Target.Position)
-            if OnScreen then
-                local MousePos = UserInputService:GetMouseLocation()
-                -- Метод mousemoverel имитирует физический сдвиг мыши, обходя защиту Блок Страйка
-                if mousemoverel then
-                    mousemoverel((ScreenPos.X - MousePos.X) * Config.AimSmooth, (ScreenPos.Y - MousePos.Y) * Config.AimSmooth)
-                else
-                    -- Запасной вариант изменения CFrame камеры, если инжектор старый
-                    Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, Target.Position), Config.AimSmooth)
-                end
-            end
+            local LookCFrame = CFrame.new(Camera.CFrame.Position, Target.Position)
+            Camera.CFrame = Camera.CFrame:Lerp(LookCFrame, _G.AimSmooth)
         end
     end
 end)
 
--- ФУНКЦИЯ 6: ПОЛНЫЙ ДИНАМИЧЕСКИЙ ESP ПАКЕТ
-local function CreateFullESP(TargetPlayer)
-    -- Инициализация элементов рисования
+-- 3. ЛОГИКА СТАБИЛЬНОГО МОБИЛЬНОГО ESP
+local function AddEspToPlayer(Plr)
     local Box = Drawing.new("Square")
     Box.Thickness = 1.5
-    Box.Color = Color3.fromRGB(255, 0, 100) -- Ярко-розовый бокс
+    Box.Color = Color3.fromRGB(255, 0, 100)
     Box.Filled = false
     Box.Visible = false
 
-    local HealthBar = Drawing.new("Line")
-    HealthBar.Thickness = 2
-    HealthBar.Color = Color3.fromRGB(0, 255, 0)
-    HealthBar.Visible = false
-
-    local Tracer = Drawing.new("Line")
-    Tracer.Thickness = 1
-    Tracer.Color = Color3.fromRGB(255, 255, 255)
-    Tracer.Visible = false
-
-    local TextDistance = Drawing.new("Text")
-    TextDistance.Size = 14
-    TextDistance.Center = true
-    TextDistance.Outline = true
-    TextDistance.Color = Color3.fromRGB(255, 255, 255)
-    TextDistance.Visible = false
-
-    -- Цикл обновления графики ESP на каждый кадр
-    local RenderConnection
-    RenderConnection = RunService.RenderStepped:Connect(function()
-        if Config.EspEnabled and TargetPlayer.Character and TargetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            if Config.TeamCheck and TargetPlayer.Team == LocalPlayer.Team then
-                Box.Visible = false; HealthBar.Visible = false; Tracer.Visible = false; TextDistance.Visible = false
-                return
-            end
-
-            local Humanoid = TargetPlayer.Character:FindFirstChildOfClass("Humanoid")
-            if Humanoid and Humanoid.Health > 0 then
-                local RootPart = TargetPlayer.Character.HumanoidRootPart
-                local ScreenPos, OnScreen = Camera:WorldToViewportPoint(RootPart.Position)
-
+    local Connection
+    Connection = RunService.RenderStepped:Connect(function()
+        if _G.EspEnabled and Plr.Character and Plr.Character:FindFirstChild("HumanoidRootPart") then
+            if Plr.Team == LocalPlayer.Team then Box.Visible = false return end
+            local Hum = Plr.Character:FindFirstChildOfClass("Humanoid")
+            if Hum and Hum.Health > 0 then
+                local Pos, OnScreen = Camera:WorldToViewportPoint(Plr.Character.HumanoidRootPart.Position)
                 if OnScreen then
-                    local DistZ = ScreenPos.Z
-                    local BoxSizeX = 2300 / DistZ
-                    local BoxSizeY = 3300 / DistZ
-                    local BoxPosX = ScreenPos.X - BoxSizeX / 2
-                    local BoxPosY = ScreenPos.Y - BoxSizeY / 2
-
-                    -- Отрисовка Квадрата (Box)
-                    if Config.EspBoxes then
-                        Box.Size = Vector2.new(BoxSizeX, BoxSizeY)
-                        Box.Position = Vector2.new(BoxPosX, BoxPosY)
-                        Box.Visible = true
-                    else Box.Visible = false end
-
-                    -- Отрисовка Здоровья (Dynamic HealthBar)
-                    if Config.EspHealth then
-                        local HealthPercent = Humanoid.Health / Humanoid.MaxHealth
-                        HealthBar.From = Vector2.new(BoxPosX - 4, BoxPosY + BoxSizeY)
-                        HealthBar.To = Vector2.new(BoxPosX - 4, BoxPosY + BoxSizeY - (BoxSizeY * HealthPercent))
-                        -- Меняем цвет от зеленого к красному в зависимости от остатка HP
-                        HealthBar.Color = Color3.fromHSV(HealthPercent * 0.3, 1, 1)
-                        HealthBar.Visible = true
-                    else HealthBar.Visible = false end
-
-                    -- Отрисовка Линий (Tracers из нижней части экрана)
-                    if Config.EspLines then
-                        Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-                        Tracer.To = Vector2.new(ScreenPos.X, ScreenPos.Y)
-                        Tracer.Visible = true
-                    else Tracer.Visible = false end
-
-                    -- Отрисовка Расстояния (Distance)
-                    if Config.EspDistance then
-                        local Meters = math.floor((RootPart.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude)
-                        TextDistance.Text = tostring(Meters) .. "m"
-                        TextDistance.Position = Vector2.new(ScreenPos.X, BoxPosY + BoxSizeY + 2)
-                        TextDistance.Visible = true
-                    else TextDistance.Visible = false end
-
+                    local SizeZ = Pos.Z
+                    Box.Size = Vector2.new(2200 / SizeZ, 3200 / SizeZ)
+                    Box.Position = Vector2.new(Pos.X - Box.Size.X / 2, Pos.Y - Box.Size.Y / 2)
+                    Box.Visible = true
                     return
                 end
             end
         end
-
-        -- Скрываем всё, если игрок мертв или за экраном
         Box.Visible = false
-        HealthBar.Visible = false
-        Tracer.Visible = false
-        TextDistance.Visible = false
-
-        -- Очистка памяти при выходе игрока
-        if not TargetPlayer.Parent then
-            Box:Remove()
-            HealthBar:Remove()
-            Tracer:Remove()
-            TextDistance:Remove()
-            RenderConnection:Disconnect()
-        end
+        if not Plr.Parent then Box:Remove() Connection:Disconnect() end
     end)
 end
 
--- ФУНКЦИЯ 7: ИНИЦИАЛИЗАЦИЯ ПОТОКОВ ДЛЯ ВСЕХ ИГРОКОВ
-for _, p in pairs(Players:GetPlayers()) do
-    if p ~= LocalPlayer then CreateFullESP(p) end
-end
-Players.PlayerAdded:Connect(function(p)
-    if p ~= LocalPlayer then CreateFullESP(p) end
-end)
+for _, p in pairs(Players:GetPlayers()) do if p ~= LocalPlayer then AddEspToPlayer(p) end end
+Players.PlayerAdded:Connect(function(p) if p ~= LocalPlayer then AddEspToPlayer(p) end end)
