@@ -1,160 +1,123 @@
--- BloxStrike Wallhack | BillboardGui + Highlight
--- 100% работает на Delta Mobile
--- Не использует Drawing / WorldToViewportPoint
+-- R DIAGNOSTIC — 4 проверки
+-- Запусти и скажи что видишь
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
-local LocalPlayer = Players.LocalPlayer
+local LP = Players.LocalPlayer
+local sg = Instance.new("ScreenGui")
+sg.Name = "R_Diag"
+sg.ResetOnSpawn = false
+sg.DisplayOrder = 9999
+sg.Parent = LP:WaitForChild("PlayerGui")
 
-local CONFIG = {
-    Highlight = true,
-    Billboard = true,
-    MaxDist = 3000,
-    FillColor = Color3.fromRGB(255, 0, 0),
-    OutlineColor = Color3.fromRGB(255, 255, 255)
-}
+-- Окно с выводом
+local f = Instance.new("Frame")
+f.Size = UDim2.new(0, 700, 0, 700)
+f.Position = UDim2.new(0, 20, 0, 60)
+f.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+f.BackgroundTransparency = 0.1
+f.BorderSizePixel = 3
+f.BorderColor3 = Color3.fromRGB(255, 100, 100)
+f.Parent = sg
 
-local cache = {}
+local close = Instance.new("TextButton")
+close.Size = UDim2.new(0, 80, 0, 36)
+close.Position = UDim2.new(1, -90, 0, 8)
+close.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+close.Text = "CLOSE"
+close.TextColor3 = Color3.fromRGB(255, 255, 255)
+close.Font = Enum.Font.GothamBold
+close.TextSize = 14
+close.Parent = f
+Instance.new("UICorner", close).CornerRadius = UDim.new(0, 6)
+close.MouseButton1Click:Connect(function() sg:Destroy() end)
 
-local function isValidChar(char)
-    if not char or char.Parent ~= Workspace then return false end
-    local head = char:FindFirstChild("Head")
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not head or not root then return false end
-    -- Отсев фейковой позиции (0, 106, 0)
-    if math.abs(head.Position.X) < 0.5 and math.abs(head.Position.Z) < 0.5 then return false end
-    return true
+local scroll = Instance.new("ScrollingFrame")
+scroll.Size = UDim2.new(1, -20, 1, -60)
+scroll.Position = UDim2.new(0, 10, 0, 52)
+scroll.BackgroundTransparency = 1
+scroll.BorderSizePixel = 0
+scroll.CanvasSize = UDim2.new(0, 0, 0, 2000)
+scroll.ScrollBarThickness = 6
+scroll.Parent = f
+
+local layout = Instance.new("UIListLayout")
+layout.Padding = UDim.new(0, 4)
+layout.Parent = scroll
+
+local function log(text, color)
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.new(1, -10, 0, 22)
+    l.BackgroundTransparency = 1
+    l.Text = text
+    l.TextColor3 = color or Color3.fromRGB(220, 220, 220)
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.Font = Enum.Font.Code
+    l.TextSize = 15
+    l.Parent = scroll
 end
 
-local function isDead(char)
-    local deadAttr = char:GetAttribute("Dead")
-    if deadAttr ~= nil then return deadAttr end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum then return hum.Health <= 0 end
-    return false
-end
+log("=== ПРОВЕРКА 1: ScreenGui ===", Color3.fromRGB(255, 220, 100))
+log("Если видишь это окно → ScreenGui РАБОТАЕТ", Color3.fromRGB(100, 255, 100))
 
-local function getHealth(char)
-    local h = char:GetAttribute("Health")
-    local mh = char:GetAttribute("MaxHealth")
-    if h and mh then return h, mh end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum then return hum.Health, hum.MaxHealth end
-    return 100, 100
-end
+task.wait(1)
 
-local function createFor(p)
-    if p == LocalPlayer or cache[p] then return end
-    local char = p.Character
-    if not char then return end
-
-    -- Highlight (видно через стены)
-    if CONFIG.Highlight then
-        local hl = Instance.new("Highlight")
-        hl.Name = "R_HL"
-        hl.FillColor = CONFIG.FillColor
-        hl.OutlineColor = CONFIG.OutlineColor
-        hl.FillTransparency = 0.5
-        hl.OutlineTransparency = 0
-        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-        hl.Adornee = char
-        hl.Parent = char
-    end
-
-    -- BillboardGui над головой
-    if CONFIG.Billboard then
-        local head = char:FindFirstChild("Head")
-        if head then
-            local bb = Instance.new("BillboardGui")
-            bb.Name = "R_BB"
-            bb.Size = UDim2.new(0, 200, 0, 50)
-            bb.StudsOffset = Vector3.new(0, 3, 0)
-            bb.AlwaysOnTop = true
-            bb.Parent = head
-
-            local name = Instance.new("TextLabel")
-            name.Size = UDim2.new(1, 0, 0, 20)
-            name.BackgroundTransparency = 1
-            name.Text = p.Name
-            name.TextColor3 = Color3.fromRGB(255, 255, 255)
-            name.TextStrokeTransparency = 0
-            name.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-            name.Font = Enum.Font.GothamBold
-            name.TextSize = 14
-            name.Parent = bb
-
-            local hp = Instance.new("TextLabel")
-            hp.Size = UDim2.new(1, 0, 0, 16)
-            hp.Position = UDim2.new(0, 0, 0, 22)
-            hp.BackgroundTransparency = 1
-            hp.Text = "100/100"
-            hp.TextColor3 = Color3.fromRGB(0, 255, 0)
-            hp.TextStrokeTransparency = 0
-            hp.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-            hp.Font = Enum.Font.Gotham
-            hp.TextSize = 12
-            hp.Parent = bb
-
-            cache[p] = {hl = hl, bb = bb, hpLabel = hp, nameLabel = name}
-        end
-    end
-end
-
-local function removeFor(p)
-    local c = cache[p]
-    if not c then return end
-    if c.hl then c.hl:Destroy() end
-    if c.bb then c.bb:Destroy() end
-    cache[p] = nil
-end
-
--- Применяем к существующим
-for _, p in ipairs(Players:GetPlayers()) do
-    if p ~= LocalPlayer and p.Character then createFor(p) end
-end
-
--- Новые игроки
-Players.PlayerAdded:Connect(function(p)
-    p.CharacterAdded:Connect(function(char)
-        task.wait(0.5)
-        createFor(p)
-    end)
+log("", Color3.fromRGB(0,0,0))
+log("=== ПРОВЕРКА 2: Instance.new(Part) ===", Color3.fromRGB(255, 220, 100))
+local ok, result = pcall(function()
+    local part = Instance.new("Part")
+    part.Size = Vector3.new(5, 5, 5)
+    part.Anchored = true
+    part.BrickColor = BrickColor.new("Bright red")
+    part.Material = Enum.Material.Neon
+    local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+    part.Position = root and (root.Position + Vector3.new(0, 10, 0)) or Vector3.new(0, 50, 0)
+    part.Parent = Workspace
+    return part
 end)
 
--- Респавны (свой и чужие)
+if ok then
+    log("Part СОЗДАН. Красный куб над головой?", Color3.fromRGB(100, 255, 100))
+else
+    log("Part НЕ СОЗДАН: " .. tostring(result), Color3.fromRGB(255, 100, 100))
+end
+
+log("", Color3.fromRGB(0,0,0))
+log("=== ПРОВЕРКА 3: Highlight на игроках ===", Color3.fromRGB(255, 220, 100))
+local count = 0
 for _, p in ipairs(Players:GetPlayers()) do
-    if p ~= LocalPlayer then
-        p.CharacterAdded:Connect(function()
-            task.wait(0.5)
-            createFor(p)
+    if p ~= LP and p.Character and p.Character.Parent == Workspace then
+        local okHL = pcall(function()
+            local hl = Instance.new("Highlight")
+            hl.FillColor = Color3.fromRGB(255, 0, 0)
+            hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+            hl.FillTransparency = 0
+            hl.OutlineTransparency = 0
+            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            hl.Adornee = p.Character
+            hl.Parent = p.Character
         end)
+        if okHL then
+            count = count + 1
+            log("  HL -> " .. p.Name, Color3.fromRGB(100, 255, 100))
+        else
+            log("  HL FAIL -> " .. p.Name, Color3.fromRGB(255, 100, 100))
+        end
     end
 end
+log("Обведено игроков: " .. count, Color3.fromRGB(100, 255, 100))
 
-Players.PlayerRemoving:Connect(removeFor)
+log("", Color3.fromRGB(0,0,0))
+log("=== ПРОВЕРКА 4: API Delta ===", Color3.fromRGB(255, 220, 100))
+log("Executor: " .. tostring(identifyexecutor and identifyexecutor() or "unknown"), Color3.fromRGB(180, 220, 255))
+log("Drawing: " .. tostring(pcall(function() return Drawing.new("Square") end)), Color3.fromRGB(180, 220, 255))
+log("Highlight: " .. tostring(pcall(function() return Instance.new("Highlight") end)), Color3.fromRGB(180, 220, 255))
+log("BillboardGui: " .. tostring(pcall(function() return Instance.new("BillboardGui") end)), Color3.fromRGB(180, 220, 255))
+log("hookmetamethod: " .. tostring(hookmetamethod ~= nil), Color3.fromRGB(180, 220, 255))
+log("getrawmetatable: " .. tostring(getrawmetatable ~= nil), Color3.fromRGB(180, 220, 255))
+log("setreadonly: " .. tostring(setreadonly ~= nil), Color3.fromRGB(180, 220, 255))
+log("newcclosure: " .. tostring(newcclosure ~= nil), Color3.fromRGB(180, 220, 255))
+log("getnamecallmethod: " .. tostring(getnamecallmethod ~= nil), Color3.fromRGB(180, 220, 255))
 
--- Обновление здоровья каждый кадр
-RunService.Heartbeat:Connect(function()
-    for p, c in pairs(cache) do
-        local char = p.Character
-        if not char or char.Parent ~= Workspace then
-            removeFor(p)
-            continue
-        end
-        local isDeadNow = isDead(char)
-        local hp, mhp = getHealth(char)
-        local pct = mhp > 0 and (hp / mhp) or 0
-
-        if c.hl then
-            c.hl.FillColor = isDeadNow and Color3.fromRGB(100, 100, 100) or CONFIG.FillColor
-        end
-
-        if c.hpLabel then
-            c.hpLabel.Text = string.format("%d/%d", math.floor(hp), math.floor(mhp))
-            c.hpLabel.TextColor3 = Color3.fromRGB(255 * (1 - pct), 255 * pct, 0)
-        end
-    end
-end)
-
-print("[R] WH loaded via Highlight + BillboardGui. 100% safe from viewport.")
+log("", Color3.fromRGB(0,0,0))
+log("=== END ===", Color3.fromRGB(255, 220, 100))
