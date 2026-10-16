@@ -1,10 +1,11 @@
--- BloxStrike Wallhack / ESP ONLY
+-- BloxStrike Wallhack / ESP ONLY (FULL)
 -- Executor: Delta / Xeno / Wave
 -- Resolution: 2772x1280
--- Не зависит от ремоутов — работает всегда
+-- Без ремоутов. Health check убран — рисует живых.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
@@ -17,10 +18,9 @@ local CONFIG = {
     Health = true,
     Distance = true,
     Skeleton = false,
-    MaxDist = 2000,
+    MaxDist = 3000,
     TeamCheck = false,
 
-    -- Цвета
     BoxColor = Color3.fromRGB(255, 60, 60),
     NameColor = Color3.fromRGB(255, 255, 255),
     DistColor = Color3.fromRGB(200, 200, 200),
@@ -86,7 +86,6 @@ local function createESP(p)
     distText.Color = CONFIG.DistColor
     distText.Visible = false
 
-    -- Скелет (опционально)
     local headDot = Drawing.new("Circle")
     headDot.Radius = 4
     headDot.Filled = true
@@ -130,19 +129,15 @@ local function updateESP()
             continue
         end
 
-        local hum = char:FindFirstChildOfClass("Humanoid")
         local root = char:FindFirstChild("HumanoidRootPart")
         local head = char:FindFirstChild("Head")
 
-        if not hum or not root or not head then
+        if not root or not head then
             hideESP(d)
             continue
         end
 
-        if hum.Health <= 0 then
-            hideESP(d)
-            continue
-        end
+        -- Health check УБРАН. Рисуем всех живых и мёртвых.
 
         local dist = (Camera.CFrame.Position - root.Position).Magnitude
         if dist > CONFIG.MaxDist then
@@ -150,19 +145,22 @@ local function updateESP()
             continue
         end
 
-        -- Позиции на экране
         local headWorld = head.Position + Vector3.new(0, 0.5, 0)
         local feetWorld = root.Position - Vector3.new(0, 2.8, 0)
 
         local headPos, headOn = Camera:WorldToViewportPoint(headWorld)
         local feetPos, feetOn = Camera:WorldToViewportPoint(feetWorld)
 
-        if not headOn or not feetOn or headPos.Z <= 0 or feetPos.Z <= 0 then
+        if not headOn or not feetOn then
             hideESP(d)
             continue
         end
 
-        -- Проверка границ экрана 2772x1280
+        if headPos.Z <= 0 or feetPos.Z <= 0 then
+            hideESP(d)
+            continue
+        end
+
         if headPos.X < 0 or headPos.Y < 0 or headPos.X > vp.X or headPos.Y > vp.Y then
             hideESP(d)
             continue
@@ -176,11 +174,10 @@ local function updateESP()
 
         local col = getColor(p)
 
-        -- Box
+        -- Box + outline
         if CONFIG.Box then
             d.outline.Size = Vector2.new(w + 2, h + 2)
             d.outline.Position = Vector2.new(boxX - 1, boxY - 1)
-            d.outline.Color = Color3.fromRGB(0, 0, 0)
             d.outline.Visible = true
 
             d.box.Size = Vector2.new(w, h)
@@ -202,9 +199,13 @@ local function updateESP()
             d.name.Visible = false
         end
 
-        -- Health
+        -- Health — не сбрасывается в 0 если Humanoid пустой
         if CONFIG.Health then
-            local pct = hum.Health / math.max(hum.MaxHealth, 1)
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            local pct = 1
+            if hum and hum.MaxHealth and hum.MaxHealth > 0 then
+                pct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+            end
             local barH = h * pct
             d.healthBg.Size = Vector2.new(5, h)
             d.healthBg.Position = Vector2.new(boxX - 10, boxY)
@@ -223,6 +224,7 @@ local function updateESP()
         if CONFIG.Distance then
             d.distText.Position = Vector2.new(headPos.X, boxY + h + 6)
             d.distText.Text = string.format("[%d studs]", math.floor(dist))
+            d.distText.Color = col
             d.distText.Visible = true
         else
             d.distText.Visible = false
@@ -256,14 +258,14 @@ Players.PlayerRemoving:Connect(function(p)
     end
 end)
 
--- Обновление
 RunService.RenderStepped:Connect(updateESP)
 
---========== ПРОСТОЕ МЕНЮ ==========
+--========== МЕНЮ ==========
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local sg = Instance.new("ScreenGui")
 sg.Name = "R_ESP_Menu"
 sg.ResetOnSpawn = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 sg.Parent = PlayerGui
 
 local openBtn = Instance.new("TextButton")
@@ -279,7 +281,7 @@ openBtn.Parent = sg
 Instance.new("UICorner", openBtn).CornerRadius = UDim.new(1, 0)
 
 local panel = Instance.new("Frame")
-panel.Size = UDim2.new(0, 320, 0, 420)
+panel.Size = UDim2.new(0, 340, 0, 480)
 panel.Position = UDim2.new(0, 120, 0, 150)
 panel.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
 panel.BorderSizePixel = 0
@@ -287,19 +289,27 @@ panel.Visible = false
 panel.Parent = sg
 Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 12)
 
-local header = Instance.new("TextLabel")
+local header = Instance.new("Frame")
 header.Size = UDim2.new(1, 0, 0, 44)
 header.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-header.Text = "Wallhack / ESP"
-header.TextColor3 = Color3.fromRGB(255, 255, 255)
-header.Font = Enum.Font.GothamBold
-header.TextSize = 18
+header.BorderSizePixel = 0
 header.Parent = panel
 Instance.new("UICorner", header).CornerRadius = UDim.new(0, 12)
 
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -20, 1, 0)
+title.Position = UDim2.new(0, 15, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "Wallhack / ESP"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Font = Enum.Font.GothamBold
+title.TextSize = 18
+title.Parent = header
+
 local list = Instance.new("Frame")
 list.Size = UDim2.new(1, -20, 1, -60)
-list.Position = UDim2.new(0, 10, 0, 50)
+list.Position = UDim2.new(0, 10, 0, 52)
 list.BackgroundTransparency = 1
 list.Parent = panel
 
@@ -310,31 +320,31 @@ layout.Parent = list
 
 local function mkToggle(text, default, cb)
     local f = Instance.new("Frame")
-    f.Size = UDim2.new(1, 0, 0, 38)
+    f.Size = UDim2.new(1, 0, 0, 40)
     f.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
     f.BorderSizePixel = 0
     f.Parent = list
     Instance.new("UICorner", f).CornerRadius = UDim.new(0, 6)
 
     local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -70, 1, 0)
-    lbl.Position = UDim2.new(0, 12, 0, 0)
+    lbl.Size = UDim2.new(1, -80, 1, 0)
+    lbl.Position = UDim2.new(0, 15, 0, 0)
     lbl.BackgroundTransparency = 1
     lbl.Text = text
     lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Font = Enum.Font.Gotham
-    lbl.TextSize = 15
+    lbl.TextSize = 16
     lbl.Parent = f
 
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 56, 0, 26)
-    btn.Position = UDim2.new(1, -66, 0.5, -13)
+    btn.Size = UDim2.new(0, 60, 0, 28)
+    btn.Position = UDim2.new(1, -75, 0.5, -14)
     btn.BackgroundColor3 = default and Color3.fromRGB(80, 200, 120) or Color3.fromRGB(60, 60, 70)
     btn.Text = default and "ON" or "OFF"
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 13
+    btn.TextSize = 14
     btn.BorderSizePixel = 0
     btn.Parent = f
     Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
@@ -360,7 +370,7 @@ openBtn.MouseButton1Click:Connect(function()
     panel.Visible = not panel.Visible
 end)
 
--- Drag
+-- Drag панели
 local dragStart, startPos
 header.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -368,16 +378,16 @@ header.InputBegan:Connect(function(input)
         startPos = panel.Position
     end
 end)
-game:GetService("UserInputService").InputChanged:Connect(function(input)
+UserInputService.InputChanged:Connect(function(input)
     if dragStart and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
         local d = input.Position - dragStart
         panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
     end
 end)
-game:GetService("UserInputService").InputEnded:Connect(function(input)
+UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragStart = nil
     end
 end)
 
-print("[R] ESP loaded. Resolution: 2772x1280")
+print("[R] ESP loaded. Resolution: 2772x1280. No remotes used.")
