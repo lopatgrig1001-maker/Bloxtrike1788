@@ -1,16 +1,48 @@
--- SILENT AIM | через Camera.CFrame — БЕЗ ХУКОВ
+-- AIMBOT TEST | Без хуков | С отладкой
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 local LP = Players.LocalPlayer
 local Cam = Workspace.CurrentCamera
+local PG = LP:WaitForChild("PlayerGui")
 
-local CONFIG = {
-    Enabled = true,
-    FOV = 250,
-    ShootKey = Enum.UserInputType.MouseButton1 -- левая кнопка = выстрел
-}
+local FOV = 300
+local HOLD = false
+
+local sg = Instance.new("ScreenGui")
+sg.ResetOnSpawn = false
+sg.Parent = PG
+
+-- Отладочный текст
+local dbg = Instance.new("TextLabel")
+dbg.Size = UDim2.new(0, 600, 0, 80)
+dbg.Position = UDim2.new(0, 20, 0, 60)
+dbg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+dbg.BackgroundTransparency = 0.3
+dbg.TextColor3 = Color3.fromRGB(255, 255, 255)
+dbg.TextXAlignment = Enum.TextXAlignment.Left
+dbg.Font = Enum.Font.Code
+dbg.TextSize = 14
+dbg.TextWrapped = true
+dbg.Parent = sg
+
+-- AIM кнопка
+local aimBtn = Instance.new("TextButton")
+aimBtn.Size = UDim2.new(0, 100, 0, 100)
+aimBtn.Position = UDim2.new(0, 20, 0, 200)
+aimBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+aimBtn.BackgroundTransparency = 0.3
+aimBtn.Text = "AIM"
+aimBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+aimBtn.TextScaled = true
+aimBtn.Font = Enum.Font.GothamBold
+aimBtn.Parent = sg
+Instance.new("UICorner", aimBtn).CornerRadius = UDim.new(1, 0)
+
+aimBtn.MouseButton1Down:Connect(function() HOLD = true end)
+aimBtn.MouseButton1Up:Connect(function() HOLD = false end)
+aimBtn.MouseLeave:Connect(function() HOLD = false end)
 
 -- FOV круг
 local circle = Drawing.new("Circle")
@@ -21,19 +53,51 @@ circle.Color = Color3.fromRGB(255, 60, 60)
 circle.Transparency = 0.8
 circle.Visible = true
 
-local function calcRadius()
-    return (CONFIG.FOV / 90) * (math.sqrt(Cam.ViewportSize.X^2 + Cam.ViewportSize.Y^2) / 2)
+local function calcR()
+    return (FOV / 90) * (math.sqrt(Cam.ViewportSize.X^2 + Cam.ViewportSize.Y^2) / 2)
 end
 
-RunService.RenderStepped:Connect(function()
-    circle.Position = Vector2.new(Cam.ViewportSize.X / 2, Cam.ViewportSize.Y / 2)
-    circle.Radius = calcRadius()
-end)
+-- Считаем сколько игроков валидны
+local function scanPlayers()
+    local valid = 0
+    local total = 0
+    local lines = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == LP then continue end
+        total = total + 1
+        local char = p.Character
+        if not char then
+            table.insert(lines, p.Name .. ": no char")
+            continue
+        end
+        local head = char:FindFirstChild("Head")
+        if not head then
+            table.insert(lines, p.Name .. ": no head")
+            continue
+        end
+        local pos = head.Position
+        -- отсев (0,106,0)
+        if math.abs(pos.X) < 0.5 and math.abs(pos.Z) < 0.5 then
+            table.insert(lines, p.Name .. ": fake pos")
+            continue
+        end
+        local sp, on = Cam:WorldToViewportPoint(pos)
+        if not on or sp.Z <= 0 then
+            table.insert(lines, p.Name .. ": behind camera")
+            continue
+        end
+        local dist = (Cam.CFrame.Position - pos).Magnitude
+        table.insert(lines, string.format("%s: OK %.0f studs XY(%.0f,%.0f)", p.Name, dist, sp.X, sp.Y))
+        valid = valid + 1
+    end
+    return valid, total, lines
+end
 
+-- Поиск цели
 local function getTarget()
     local vp = Cam.ViewportSize
     local center = Vector2.new(vp.X/2, vp.Y/2)
-    local rad = calcRadius()
+    local rad = calcR()
     local best, bd = nil, math.huge
     for _, p in ipairs(Players:GetPlayers()) do
         if p == LP then continue end
@@ -44,7 +108,9 @@ local function getTarget()
         if hum and hum.Health <= 0 then continue end
         local head = char:FindFirstChild("Head")
         if not head then continue end
-        local sp, on = Cam:WorldToViewportPoint(head.Position)
+        local pos = head.Position
+        if math.abs(pos.X) < 0.5 and math.abs(pos.Z) < 0.5 then continue end
+        local sp, on = Cam:WorldToViewportPoint(pos)
         if not on or sp.Z <= 0 then continue end
         local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
         if d < rad and d < bd then bd = d; best = head end
@@ -52,33 +118,25 @@ local function getTarget()
     return best
 end
 
--- Запоминаем настоящий CFrame
-local realCamCF = Cam.CFrame
 RunService.RenderStepped:Connect(function()
-    -- если стреляем — НЕ восстанавливаем, чтобы выстрел ушёл в цель
-    if not _G.R_SILENT_HOLD then
-        realCamCF = Cam.CFrame
-    end
+    circle.Position = Vector2.new(Cam.ViewportSize.X / 2, Cam.ViewportSize.Y / 2)
+    circle.Radius = calcR()
+    
+    local held = HOLD or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+    local valid, total, lines = scanPlayers()
+    
+    local txt = "FOV: " .. FOV .. " | Valid: " .. valid .. "/" .. total .. " | Held: " .. tostring(held) .. "\n"
+    txt = txt .. table.concat(lines, " | ")
+    dbg.Text = txt
+    
+    if not held then return end
+    
+    local target = getTarget()
+    if not target then return end
+    
+    -- Поворачиваем камеру
+    local oldCF = Cam.CFrame
+    Cam.CFrame = CFrame.lookAt(Cam.CFrame.Position, target.Position)
 end)
 
--- Хук на нажатие мыши
-UserInputService.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if not CONFIG.Enabled then return end
-    if input.UserInputType == CONFIG.ShootKey then
-        local target = getTarget()
-        if not target then return end
-        -- На один кадр поворачиваем камеру в голову
-        local saved = Cam.CFrame
-        Cam.CFrame = CFrame.lookAt(Cam.CFrame.Position, target.Position)
-        _G.R_SILENT_HOLD = true
-        -- Ждём пока выстрел уйдёт
-        task.wait()
-        task.wait()
-        -- Возвращаем назад
-        Cam.CFrame = saved
-        _G.R_SILENT_HOLD = false
-    end
-end)
-
-print("[R] SILENT via Camera.CFrame loaded")
+print("[R] AIMBOT TEST loaded")
