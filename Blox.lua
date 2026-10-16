@@ -1,14 +1,14 @@
--- AIM INSTANT | Camera мгновенно на голову
+-- SILENT через ViewportPointToRay — подмена ВОЗВРАТА (не аргумента)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 local LP = Players.LocalPlayer
 local Cam = Workspace.CurrentCamera
-local PG = LP:WaitForChild("PlayerGui")
 
-local FOV = 300
-local HOLD = false
+local CONFIG = {
+    Enabled = true,
+    FOV = 300
+}
 
 local circle = Drawing.new("Circle")
 circle.Thickness = 2
@@ -19,7 +19,7 @@ circle.Transparency = 0.8
 circle.Visible = true
 
 local function calcR()
-    return (FOV / 90) * (math.sqrt(Cam.ViewportSize.X^2 + Cam.ViewportSize.Y^2) / 2)
+    return (CONFIG.FOV / 90) * (math.sqrt(Cam.ViewportSize.X^2 + Cam.ViewportSize.Y^2) / 2)
 end
 
 local function getTarget()
@@ -46,37 +46,36 @@ local function getTarget()
     return best
 end
 
-local sg = Instance.new("ScreenGui")
-sg.ResetOnSpawn = false
-sg.Parent = PG
-
-local aimBtn = Instance.new("TextButton")
-aimBtn.Size = UDim2.new(0, 110, 0, 110)
-aimBtn.Position = UDim2.new(0, 20, 0, 250)
-aimBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-aimBtn.BackgroundTransparency = 0.3
-aimBtn.Text = "AIM"
-aimBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-aimBtn.TextScaled = true
-aimBtn.Font = Enum.Font.GothamBold
-aimBtn.Parent = sg
-Instance.new("UICorner", aimBtn).CornerRadius = UDim.new(1, 0)
-aimBtn.MouseButton1Down:Connect(function() HOLD = true end)
-aimBtn.MouseButton1Up:Connect(function() HOLD = false end)
-aimBtn.MouseLeave:Connect(function() HOLD = false end)
-
 RunService.RenderStepped:Connect(function()
     circle.Position = Vector2.new(Cam.ViewportSize.X / 2, Cam.ViewportSize.Y / 2)
     circle.Radius = calcR()
-    
-    local held = HOLD or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
-    if not held then return end
-    
-    local target = getTarget()
-    if not target then return end
-    
-    -- МГНОВЕННО без сглаживания
-    Cam.CFrame = CFrame.lookAt(Cam.CFrame.Position, target.Position)
 end)
 
-print("[R] INSTANT AIM loaded")
+-- Хук на ViewportPointToRay — подменяем возвращаемый Ray
+local mt = getrawmetatable(game)
+if mt then
+    local oldNC = mt.__namecall
+    setreadonly(mt, false)
+    
+    mt.__namecall = newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        
+        if CONFIG.Enabled and method == "ViewportPointToRay" and self == Cam then
+            local target = getTarget()
+            if target then
+                -- Считаем направление от камеры к голове
+                local origin = Cam.CFrame.Position
+                local dir = (target.Position - origin)
+                -- Возвращаем НОВЫЙ Ray — от камеры к голове
+                return Ray.new(origin, dir)
+            end
+        end
+        
+        return oldNC(self, ...)
+    end)
+    
+    setreadonly(mt, true)
+    print("[R] SILENT hooked ViewportPointToRay RETURN")
+end
+
+print("[R] SILENT v3 loaded")
