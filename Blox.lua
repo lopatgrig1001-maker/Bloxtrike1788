@@ -1,55 +1,85 @@
--- SILENT AIM через hookfunction (менее агрессивно чем __namecall)
-local function getTarget()
-    local vp = Cam.ViewportSize
-    local center = Vector2.new(vp.X/2, vp.Y/2)
-    local fovPx = (FOV / 90) * (math.sqrt(vp.X^2 + vp.Y^2) / 2)
-    local best, bd = nil, math.huge
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p == LP then continue end
-        local char = p.Character
-        if not char then continue end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum and hum.Health <= 0 then continue end
-        if char:GetAttribute("Dead") then continue end
-        local head = char:FindFirstChild("Head")
-        if not head then continue end
-        local sp, on = Cam:WorldToViewportPoint(head.Position)
-        if not on or sp.Z <= 0 then continue end
-        local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
-        if d < fovPx and d < bd then bd = d; best = head end
-    end
-    return best
+-- Лог методов при выстреле | Безопасный
+local seen = {}
+local fired = {}
+
+local mt = getrawmetatable(game)
+if not mt then
+    return
 end
 
--- Пытаемся хукнуть через __namecall (если не крашит)
-local success, err = pcall(function()
-    local mt = getrawmetatable(game)
-    if not mt then error("no mt") end
-    local old = mt.__namecall
-    setreadonly(mt, false)
-    mt.__namecall = newcclosure(function(self, ...)
-        local method = getnamecallmethod()
-        if method == "Fire" or method == "FireServer" or method == "InvokeServer" then
-            local args = {...}
-            if typeof(args[1]) == "Vector3" or typeof(args[1]) == "CFrame" then
-                local target = getTarget()
-                if target then
-                    if typeof(args[1]) == "Vector3" then
-                        args[1] = target.Position
-                    elseif typeof(args[1]) == "CFrame" then
-                        args[1] = CFrame.new(target.Position)
-                    end
-                end
-                return old(self, table.unpack(args))
-            end
+local old = mt.__namecall
+setreadonly(mt, false)
+
+mt.__namecall = newcclosure(function(self, ...)
+    local method = getnamecallmethod()
+    
+    -- Считаем частоту методов
+    if method then
+        seen[method] = (seen[method] or 0) + 1
+    end
+    
+    -- Логируем ВСЁ что вызывается через namecall при стрельбе (кроме спама Roblox)
+    if method and method ~= "IsA" and method ~= "FindFirstChild" and method ~= "GetPropertyChangedSignal" 
+        and method ~= "WaitForChild" and method ~= "GetChildren" and method ~= "GetDescendants"
+        and method ~= "GetFullName" and method ~= "GetAttribute" and method ~= "SetAttribute"
+        and method ~= "GetService" and method ~= "Destroy" and method ~= "Clone" then
+        
+        local key = method
+        if not fired[key] then
+            fired[key] = { count = 0, lastSelf = self }
         end
-        return old(self, ...)
-    end)
-    setreadonly(mt, true)
+        fired[key].count = fired[key].count + 1
+        fired[key].lastSelf = self
+    end
+    
+    return old(self, ...)
 end)
 
-if success then
-    print("[R] SILENT via __namecall OK")
-else
-    warn("[R] __namecall failed:", err)
-end
+setreadonly(mt, true)
+
+-- GUI
+local sg = Instance.new("ScreenGui")
+sg.ResetOnSpawn = false
+sg.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+
+local f = Instance.new("Frame")
+f.Size = UDim2.new(0, 700, 0, 600)
+f.Position = UDim2.new(0, 20, 0, 60)
+f.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+f.BackgroundTransparency = 0.15
+f.BorderSizePixel = 2
+f.BorderColor3 = Color3.fromRGB(255, 100, 100)
+f.Parent = sg
+
+local scroll = Instance.new("ScrollingFrame")
+scroll.Size = UDim2.new(1, -20, 1, -20)
+scroll.Position = UDim2.new(0, 10, 0, 10)
+scroll.BackgroundTransparency = 1
+scroll.CanvasSize = UDim2.new(0, 0, 0, 3000)
+scroll.ScrollBarThickness = 6
+scroll.Parent = f
+
+local lbl = Instance.new("TextLabel")
+lbl.Size = UDim2.new(1, -10, 0, 3000)
+lbl.BackgroundTransparency = 1
+lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
+lbl.TextXAlignment = Enum.TextXAlignment.Left
+lbl.TextYAlignment = Enum.TextYAlignment.Top
+lbl.Font = Enum.Font.Code
+lbl.TextSize = 14
+lbl.TextWrapped = true
+lbl.Parent = scroll
+
+game:GetService("RunService").Heartbeat:Connect(function()
+    local lines = {"=== Выстрели пару раз ===", ""}
+    for method, data in pairs(fired) do
+        local selfName = "?"
+        pcall(function() selfName = data.lastSelf:GetFullName() end)
+        table.insert(lines, method .. " (" .. data.count .. ")")
+        table.insert(lines, "    -> " .. selfName)
+        table.insert(lines, "")
+    end
+    lbl.Text = table.concat(lines, "\n")
+end)
+
+print("[R] Method logger started")
