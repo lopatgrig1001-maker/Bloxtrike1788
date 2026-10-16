@@ -1,85 +1,86 @@
--- Лог методов при выстреле | Безопасный
-local seen = {}
-local fired = {}
+-- SILENT AIM | hook ViewportPointToRay
+-- Работает без краша на BloxStrike
 
-local mt = getrawmetatable(game)
-if not mt then
-    return
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local LP = Players.LocalPlayer
+local Cam = Workspace.CurrentCamera
+
+local CONFIG = {
+    Enabled = true,
+    FOV = 250
+}
+
+-- FOV круг
+local circle = Drawing.new("Circle")
+circle.Thickness = 2
+circle.NumSides = 60
+circle.Filled = false
+circle.Color = Color3.fromRGB(255, 60, 60)
+circle.Transparency = 0.8
+circle.Visible = true
+
+local function calcRadius()
+    return (CONFIG.FOV / 90) * (math.sqrt(Cam.ViewportSize.X^2 + Cam.ViewportSize.Y^2) / 2)
 end
 
-local old = mt.__namecall
-setreadonly(mt, false)
+RunService.RenderStepped:Connect(function()
+    circle.Position = Vector2.new(Cam.ViewportSize.X / 2, Cam.ViewportSize.Y / 2)
+    circle.Radius = calcRadius()
+end)
 
-mt.__namecall = newcclosure(function(self, ...)
-    local method = getnamecallmethod()
-    
-    -- Считаем частоту методов
-    if method then
-        seen[method] = (seen[method] or 0) + 1
+-- Поиск ближайшего к центру
+local function getTarget()
+    local vp = Cam.ViewportSize
+    local center = Vector2.new(vp.X/2, vp.Y/2)
+    local rad = calcRadius()
+    local best, bd = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == LP then continue end
+        local char = p.Character
+        if not char then continue end
+        if char:GetAttribute("Dead") then continue end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum and hum.Health <= 0 then continue end
+        local head = char:FindFirstChild("Head")
+        if not head then continue end
+        local sp, on = Cam:WorldToViewportPoint(head.Position)
+        if not on or sp.Z <= 0 then continue end
+        local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+        if d < rad and d < bd then bd = d; best = head end
     end
+    return best
+end
+
+-- Хук на ViewportPointToRay
+local mt = getrawmetatable(game)
+if mt then
+    local oldNamecall = mt.__namecall
+    setreadonly(mt, false)
     
-    -- Логируем ВСЁ что вызывается через namecall при стрельбе (кроме спама Roblox)
-    if method and method ~= "IsA" and method ~= "FindFirstChild" and method ~= "GetPropertyChangedSignal" 
-        and method ~= "WaitForChild" and method ~= "GetChildren" and method ~= "GetDescendants"
-        and method ~= "GetFullName" and method ~= "GetAttribute" and method ~= "SetAttribute"
-        and method ~= "GetService" and method ~= "Destroy" and method ~= "Clone" then
+    mt.__namecall = newcclosure(function(self, ...)
+        local method = getnamecallmethod()
         
-        local key = method
-        if not fired[key] then
-            fired[key] = { count = 0, lastSelf = self }
+        -- Ловим ViewportPointToRay когда его вызывают на камере
+        if CONFIG.Enabled and method == "ViewportPointToRay" then
+            local args = {...}
+            local target = getTarget()
+            if target then
+                -- Меняем аргументы: вместо позиции мыши — позиция головы
+                local sp = Cam:WorldToViewportPoint(target.Position)
+                if sp then
+                    args[1] = Vector2.new(sp.X, sp.Y)
+                end
+            end
+            return oldNamecall(self, table.unpack(args))
         end
-        fired[key].count = fired[key].count + 1
-        fired[key].lastSelf = self
-    end
+        
+        return oldNamecall(self, ...)
+    end)
     
-    return old(self, ...)
-end)
+    setreadonly(mt, true)
+    print("[R] SILENT hooked on ViewportPointToRay")
+end
 
-setreadonly(mt, true)
-
--- GUI
-local sg = Instance.new("ScreenGui")
-sg.ResetOnSpawn = false
-sg.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
-
-local f = Instance.new("Frame")
-f.Size = UDim2.new(0, 700, 0, 600)
-f.Position = UDim2.new(0, 20, 0, 60)
-f.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-f.BackgroundTransparency = 0.15
-f.BorderSizePixel = 2
-f.BorderColor3 = Color3.fromRGB(255, 100, 100)
-f.Parent = sg
-
-local scroll = Instance.new("ScrollingFrame")
-scroll.Size = UDim2.new(1, -20, 1, -20)
-scroll.Position = UDim2.new(0, 10, 0, 10)
-scroll.BackgroundTransparency = 1
-scroll.CanvasSize = UDim2.new(0, 0, 0, 3000)
-scroll.ScrollBarThickness = 6
-scroll.Parent = f
-
-local lbl = Instance.new("TextLabel")
-lbl.Size = UDim2.new(1, -10, 0, 3000)
-lbl.BackgroundTransparency = 1
-lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
-lbl.TextXAlignment = Enum.TextXAlignment.Left
-lbl.TextYAlignment = Enum.TextYAlignment.Top
-lbl.Font = Enum.Font.Code
-lbl.TextSize = 14
-lbl.TextWrapped = true
-lbl.Parent = scroll
-
-game:GetService("RunService").Heartbeat:Connect(function()
-    local lines = {"=== Выстрели пару раз ===", ""}
-    for method, data in pairs(fired) do
-        local selfName = "?"
-        pcall(function() selfName = data.lastSelf:GetFullName() end)
-        table.insert(lines, method .. " (" .. data.count .. ")")
-        table.insert(lines, "    -> " .. selfName)
-        table.insert(lines, "")
-    end
-    lbl.Text = table.concat(lines, "\n")
-end)
-
-print("[R] Method logger started")
+print("[R] SILENT loaded")
